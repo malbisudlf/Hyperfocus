@@ -88,22 +88,68 @@ function onCatalogUpdated() {
 }
 
 // ---------- fuente dinámica: Wikipedia en español ----------
-// El tema «Descubre» se alimenta en vivo de la API pública de Wikimedia
-// (gratuita, sin claves, con CORS abierto): resúmenes de artículos al
-// azar y efemérides del día. Contenido infinito sin mantener nada.
+// TODOS los temas se alimentan en vivo de la API pública de Wikimedia
+// (gratuita, sin claves, con CORS abierto). Cada tema busca artículos
+// relacionados con sus términos semilla, con desplazamiento aleatorio
+// para variar los resultados: contenido casi ilimitado sin mantener nada.
+// «Descubre» usa además artículos al azar y efemérides del día.
 const WIKI_RANDOM_URL = "https://es.wikipedia.org/api/rest_v1/page/random/summary";
 const WIKI_ONTHISDAY_URL = () => {
   const d = new Date();
   return `https://es.wikipedia.org/api/rest_v1/feed/onthisday/events/${d.getMonth() + 1}/${d.getDate()}`;
 };
+const WIKI_SEARCH_URL = (query, offset) =>
+  "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
+  `&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=10&gsroffset=${offset}` +
+  "&prop=extracts%7Cinfo&exintro=1&explaintext=1&exlimit=max&inprop=url";
+
+// Términos de búsqueda por tema. Cada petición elige uno al azar y un
+// desplazamiento aleatorio, así el pozo de artículos apenas se repite.
+const TOPIC_QUERIES = {
+  enfoque:       ["atención psicología", "concentración mental", "distracción cognitiva", "atención plena meditación"],
+  productividad: ["productividad trabajo", "gestión del tiempo", "procrastinación", "eficiencia método trabajo"],
+  habitos:       ["hábito psicología", "motivación conducta", "autocontrol psicología", "rutina comportamiento"],
+  mentalidad:    ["sesgo cognitivo", "resiliencia psicología", "estoicismo filosofía", "inteligencia emocional"],
+  salud:         ["ejercicio físico salud", "nutrición alimentación", "sueño descanso", "bienestar salud mental"],
+  creatividad:   ["creatividad", "proceso creativo innovación", "pensamiento lateral", "imaginación psicología"],
+  dinero:        ["finanzas personales", "ahorro inversión", "economía conductual", "interés compuesto"],
+  aprendizaje:   ["memoria aprendizaje", "técnicas de estudio", "neurociencia aprendizaje", "psicología educativa"],
+  relaciones:    ["comunicación interpersonal", "empatía psicología", "psicología social relaciones", "asertividad"],
+};
 
 let wikiBuffer = [];        // tarjetas dinámicas listas para el feed
 let wikiFetching = false;
 let onThisDayPool = null;   // efemérides de hoy (se piden una vez por sesión)
-let readsSinceDynamic = 0;  // para intercalar 1 dinámica cada 3 tarjetas
+let readsSinceDynamic = 0;  // para espaciar las tarjetas dinámicas
+let allStaticRead = false;  // catálogo local agotado → feed casi todo dinámico
 
 function dynamicActive() {
-  return state.interests.includes("descubre");
+  return state.interests.length > 0;
+}
+
+function trimBody(text) {
+  return text.length > 420 ? text.slice(0, 400).trimEnd() + "…" : text;
+}
+
+async function fetchTopicBatch(topicId) {
+  const queries = TOPIC_QUERIES[topicId];
+  if (!queries) return [];
+  const query = queries[Math.floor(Math.random() * queries.length)];
+  const offset = Math.floor(Math.random() * 40);
+  const res = await fetch(WIKI_SEARCH_URL(query, offset));
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const pages = (data.query && data.query.pages) || [];
+  return pages
+    .filter((p) => p.extract && p.extract.length >= 120)
+    .map((p) => ({
+      id: "wiki-" + p.pageid,
+      topic: topicId,
+      title: p.title,
+      body: trimBody(p.extract),
+      url: p.fullurl || null,
+      source: "Wikipedia · CC BY-SA",
+    }));
 }
 
 async function fetchRandomWikiCard() {
@@ -116,7 +162,7 @@ async function fetchRandomWikiCard() {
     id: "wiki-" + p.pageid,
     topic: "descubre",
     title: p.title,
-    body: p.extract.length > 420 ? p.extract.slice(0, 400).trimEnd() + "…" : p.extract,
+    body: trimBody(p.extract),
     url: p.content_urls && p.content_urls.desktop ? p.content_urls.desktop.page : null,
     source: "Wikipedia · CC BY-SA",
   };
@@ -143,15 +189,24 @@ async function fetchOnThisDayCard() {
 }
 
 async function refillWikiBuffer() {
-  if (wikiFetching || !dynamicActive() || wikiBuffer.length >= 4) return;
+  if (wikiFetching || !dynamicActive() || wikiBuffer.length >= 6) return;
   wikiFetching = true;
   try {
-    // Mezcla: 3 artículos al azar + 1 efeméride por tanda
-    const fetchers = [fetchRandomWikiCard(), fetchRandomWikiCard(), fetchRandomWikiCard(), fetchOnThisDayCard()];
-    const results = await Promise.allSettled(fetchers);
-    results.forEach((r) => {
-      if (r.status === "fulfilled" && r.value && !wikiBuffer.some((c) => c.id === r.value.id)) {
-        wikiBuffer.push(r.value);
+    // Cada tanda alimenta un interés al azar del usuario
+    const topicId = state.interests[Math.floor(Math.random() * state.interests.length)];
+    let cards = [];
+    if (topicId === "descubre") {
+      const results = await Promise.allSettled([fetchRandomWikiCard(), fetchRandomWikiCard(), fetchOnThisDayCard()]);
+      cards = results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
+    } else {
+      cards = await fetchTopicBatch(topicId);
+    }
+    // Sin repetidos: ni ya leídas (histórico) ni ya en el buffer
+    const seen = new Set([...state.readIds, ...wikiBuffer.map((c) => c.id)]);
+    shuffle(cards).forEach((c) => {
+      if (!seen.has(c.id) && wikiBuffer.length < 12) {
+        wikiBuffer.push(c);
+        seen.add(c.id);
       }
     });
   } catch { /* sin red: el feed sigue con el catálogo local */ }
@@ -303,14 +358,17 @@ function showStep(n) {
 function buildQueue() {
   const pool = IDEAS.filter((i) => state.interests.includes(i.topic));
   const unread = pool.filter((i) => !state.readIds.includes(i.id));
+  allStaticRead = unread.length === 0 && pool.length > 0;
   // Primero las no leídas; si se acaban, recicla todas barajadas.
   queue = unread.length > 0 ? shuffle(unread) : shuffle(pool);
 }
 
 function nextCard() {
   if (queue.length === 0) buildQueue();
-  // Intercala una tarjeta dinámica de Wikipedia cada 3 lecturas
-  if (dynamicActive() && wikiBuffer.length > 0 && readsSinceDynamic >= 2) {
+  // Intercala tarjetas dinámicas de Wikipedia: 1 de cada 3 mientras
+  // queden ideas locales sin leer; casi todas cuando ya leíste todo.
+  const interval = allStaticRead ? 1 : 2;
+  if (dynamicActive() && wikiBuffer.length > 0 && readsSinceDynamic >= interval) {
     currentIdea = wikiBuffer.shift();
     readsSinceDynamic = 0;
   } else {

@@ -11,7 +11,7 @@ Una app de **microlearning gratuita y de código abierto**: sustituye el scroll 
 - **Explorar** — busca ideas por texto o navega por tema.
 - **Perfil** — estadísticas de progreso, edición de intereses y meta diaria.
 - **Sin backend** — todo tu progreso se guarda en `localStorage` de tu navegador. Privacidad total.
-- **Tema «Descubre» 🌍 con contenido infinito** — se alimenta en vivo de la API pública de Wikipedia en español (gratuita, sin claves): resúmenes de artículos y efemérides del día, intercalados en tu feed. Cada tarjeta enlaza a su fuente.
+- **Contenido casi ilimitado en todos los temas** — cada sección se alimenta en vivo de la API pública de Wikipedia en español (gratuita, sin claves): artículos relacionados con cada tema, intercalados en tu feed. Cada tarjeta enlaza a su fuente. El tema «Descubre» 🌍 añade además artículos al azar y efemérides del día.
 - **Fuente externa de ideas** — al arrancar, la app también sincroniza con `ideas.json`: puedes ampliar el catálogo editando ese archivo, sin tocar código. Funciona offline gracias a una caché local.
 
 ## 🚀 Cómo usarla
@@ -75,14 +75,16 @@ Al guardar el archivo, la app publicada en GitHub Pages mostrará las ideas nuev
 3. La descarga se guarda en caché (`localStorage`), así el catálogo completo sigue disponible sin conexión.
 4. En **Perfil** puedes ver el tamaño del catálogo y el estado de la sincronización.
 
-### El tema «Descubre» (contenido en vivo)
+### Contenido dinámico en vivo (todos los temas)
 
-Si activas el interés **Descubre 🌍**, el feed intercala una tarjeta dinámica cada 3 lecturas, obtenida en el momento desde la API REST de Wikimedia:
+El feed intercala tarjetas dinámicas obtenidas en el momento desde la API pública de Wikimedia — 1 de cada 3 tarjetas mientras te queden ideas locales por leer, y casi todas cuando ya agotaste el catálogo, así el contenido nunca se acaba:
 
-- **Artículos al azar** — `es.wikipedia.org/api/rest_v1/page/random/summary`
-- **Efemérides de hoy** — `es.wikipedia.org/api/rest_v1/feed/onthisday/events/{mes}/{día}`
+- **Artículos por tema** — cada sección (Enfoque, Hábitos, Dinero…) busca artículos relacionados con sus términos semilla (`TOPIC_QUERIES` en `app.js`), eligiendo término y desplazamiento al azar en cada tanda para que apenas se repita nada.
+- **Artículos al azar y efemérides de hoy** — el tema «Descubre» 🌍 usa además `page/random/summary` y `feed/onthisday`.
 
-No requiere clave ni registro, y el contenido es infinito: nunca se acaba el feed. Las tarjetas dinámicas que guardes se almacenan completas en tu biblioteca (con su enlace a la fuente), así siguen ahí aunque no vuelvan a aparecer en la API. Si no hay conexión, el feed continúa con el catálogo local sin errores. El texto de Wikipedia es CC BY-SA y cada tarjeta enlaza a su artículo original.
+No requiere clave ni registro. Las tarjetas dinámicas que guardes se almacenan completas en tu biblioteca (con su enlace a la fuente), así siguen ahí aunque no vuelvan a aparecer en la API. Las ya leídas no se repiten. Si no hay conexión, el feed continúa con el catálogo local sin errores. El texto de Wikipedia es CC BY-SA y cada tarjeta enlaza a su artículo original.
+
+¿Quieres afinar qué artículos salen en cada tema? Edita los términos de búsqueda en `TOPIC_QUERIES` (en `app.js`).
 
 ### Usar otra fuente
 
