@@ -4,7 +4,7 @@
 // ============================================================
 
 const STORAGE_KEY = "hyperfocus-state-v1";
-const APP_VERSION = 5; // súbelo junto con los ?v= de index.html
+const APP_VERSION = 6; // súbelo junto con los ?v= de index.html
 
 const defaultState = {
   onboarded: false,
@@ -104,12 +104,28 @@ function isQualityCard(title, extract, description) {
   return true;
 }
 
-let wikiBuffer = [];        // tarjetas dinámicas listas para el feed
-let wikiFetching = false;
-let wikiFailed = false;     // última recarga falló (¿sin conexión?)
-let onThisDayPool = null;   // efemérides de hoy (se piden una vez por sesión)
-let readsSinceDynamic = 0;  // para espaciar las tarjetas dinámicas
-let allStaticRead = false;  // tarjetas locales agotadas → feed todo dinámico
+// Un buffer POR TEMA + rotación al servir: así el feed alterna temas
+// tarjeta a tarjeta en lugar de mostrar rachas de un solo tema.
+let wikiBuffers = {};            // tema -> tarjetas dinámicas listas
+const wikiFetchingTopics = new Set(); // temas con petición en vuelo
+let wikiFailed = false;          // última recarga falló (¿sin conexión?)
+let onThisDayPool = null;        // efemérides de hoy (una petición por sesión)
+let readsSinceDynamic = 0;       // para espaciar las tarjetas dinámicas
+let allStaticRead = false;       // tarjetas locales agotadas → feed todo dinámico
+let topicPointer = 0;            // puntero de rotación entre temas
+
+function bufferTotal() {
+  return Object.values(wikiBuffers).reduce((n, a) => n + a.length, 0);
+}
+
+// Sirve la siguiente tarjeta dinámica rotando entre los intereses
+function takeDynamicCard() {
+  const withCards = state.interests.filter((t) => (wikiBuffers[t] || []).length > 0);
+  if (!withCards.length) return null;
+  const topic = withCards[topicPointer % withCards.length];
+  topicPointer++;
+  return wikiBuffers[topic].shift();
+}
 
 function dynamicActive() {
   return state.interests.length > 0;
@@ -177,16 +193,16 @@ async function fetchSearchBatch(topicId) {
 // Tanda de tarjetas de un tema: primero su categoría de Wikipedia
 // (artículos de conceptos), y si no da fruto, la búsqueda de respaldo.
 async function fetchTopicBatch(topicId) {
-  const cats = TOPIC_CATEGORIES[topicId] || [];
-  if (cats.length) {
-    const cat = cats[Math.floor(Math.random() * cats.length)];
+  // Prueba hasta dos categorías distintas antes de caer al respaldo
+  const cats = shuffle(TOPIC_CATEGORIES[topicId] || []).slice(0, 2);
+  for (const cat of cats) {
     try {
       const titles = await getCategoryMembers(cat);
       if (titles.length >= 4) {
         const cards = await fetchExtractsFor(shuffle(titles).slice(0, 10), topicId);
         if (cards.length >= 3) return cards;
       }
-    } catch { /* categoría inexistente o sin red: prueba el respaldo */ }
+    } catch { /* categoría inexistente o sin red: prueba la siguiente */ }
   }
   return fetchSearchBatch(topicId);
 }
@@ -227,36 +243,51 @@ async function fetchOnThisDayCard() {
   };
 }
 
-async function refillWikiBuffer() {
-  if (wikiFetching || !dynamicActive() || wikiBuffer.length >= 6) return;
-  wikiFetching = true;
+// Rellena el buffer de UN tema concreto
+async function refillTopic(topicId) {
+  wikiFetchingTopics.add(topicId);
   try {
-    // Cada tanda alimenta un interés al azar del usuario
-    const topicId = state.interests[Math.floor(Math.random() * state.interests.length)];
-    let cards = [];
+    let cards;
     if (topicId === "descubre") {
       const results = await Promise.allSettled([fetchRandomWikiCard(), fetchRandomWikiCard(), fetchOnThisDayCard()]);
       cards = results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
     } else {
       cards = await fetchTopicBatch(topicId);
     }
-    // Sin repetidos: ni ya leídas (histórico) ni ya en el buffer
-    const seen = new Set([...state.readIds, ...wikiBuffer.map((c) => c.id)]);
+    // Sin repetidos: ni ya leídas (histórico) ni ya en ningún buffer
+    const buf = wikiBuffers[topicId] || (wikiBuffers[topicId] = []);
+    const seen = new Set(state.readIds);
+    Object.values(wikiBuffers).forEach((a) => a.forEach((c) => seen.add(c.id)));
+    let added = 0;
     shuffle(cards).forEach((c) => {
-      if (!seen.has(c.id) && wikiBuffer.length < 12) {
-        wikiBuffer.push(c);
+      if (!seen.has(c.id) && buf.length < 8) {
+        buf.push(c);
         seen.add(c.id);
+        added++;
       }
     });
-    wikiFailed = false;
-  } catch {
-    wikiFailed = true; // sin red: se reintenta en la próxima interacción
+    return added;
+  } finally {
+    wikiFetchingTopics.delete(topicId);
   }
-  wikiFetching = false;
+}
+
+// Rellena en paralelo TODOS los intereses que anden bajos de tarjetas
+async function refillWikiBuffer() {
+  if (!dynamicActive()) return;
+  const targets = state.interests.filter(
+    (t) => (wikiBuffers[t] || []).length < 3 && !wikiFetchingTopics.has(t)
+  );
+  if (!targets.length) return;
+  const results = await Promise.allSettled(targets.map((t) => refillTopic(t)));
+  // Éxito = llegaron tarjetas de verdad: «Descubre» traga sus errores de
+  // red y puede resolver con 0 tarjetas aunque no haya conexión.
+  if (results.some((r) => r.status === "fulfilled" && r.value > 0)) wikiFailed = false;
+  else if (bufferTotal() === 0) wikiFailed = true;
   // Si el usuario estaba esperando (feed vacío), avanza en cuanto haya
   // tarjetas; si la carga falló, muestra el estado de reintento.
   if (state.onboarded && !currentIdea) {
-    if (wikiBuffer.length) nextCard();
+    if (bufferTotal()) nextCard();
     else renderCard(null);
   }
 }
@@ -409,11 +440,11 @@ function nextCard() {
   // Intercala tarjetas dinámicas de Wikipedia: 1 de cada 3 mientras
   // queden ideas locales sin leer; casi todas cuando ya leíste todo.
   const interval = allStaticRead ? 1 : 2;
-  if (dynamicActive() && wikiBuffer.length > 0 && readsSinceDynamic >= interval) {
-    currentIdea = wikiBuffer.shift();
+  if (dynamicActive() && bufferTotal() > 0 && readsSinceDynamic >= interval) {
+    currentIdea = takeDynamicCard();
     readsSinceDynamic = 0;
   } else {
-    currentIdea = queue.shift() || wikiBuffer.shift() || null;
+    currentIdea = queue.shift() || takeDynamicCard() || null;
     readsSinceDynamic++;
   }
   refillWikiBuffer();
