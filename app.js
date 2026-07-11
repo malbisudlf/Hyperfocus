@@ -4,6 +4,7 @@
 // ============================================================
 
 const STORAGE_KEY = "hyperfocus-state-v1";
+const APP_VERSION = 5; // súbelo junto con los ?v= de index.html
 
 const defaultState = {
   onboarded: false,
@@ -38,7 +39,7 @@ const WIKI_ONTHISDAY_URL = () => {
 const WIKI_SEARCH_URL = (query, offset) =>
   "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
   `&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=10&gsroffset=${offset}` +
-  "&prop=extracts%7Cinfo&exintro=1&explaintext=1&exlimit=max&inprop=url";
+  "&prop=extracts%7Cinfo%7Cdescription&exintro=1&explaintext=1&exlimit=max&inprop=url";
 
 // Categorías de Wikipedia por tema: agrupan artículos de CONCEPTOS
 // (técnicas, efectos, fenómenos), que es lo que queremos en el feed.
@@ -76,16 +77,30 @@ const JUNK_TITLE =
   /^(Anexo:|Categoría:|Portal:|Wikiproyecto:)|\b(Instituto|Universidad|Asociación|Organización|Federación|Confederación|Fundación|Ministerio|Secretaría|Facultad|Colegio|Hospital|Museo|Revista|Editorial|Premio|Congreso|Consejo|Agencia|Comité|Observatorio|Día Internacional|Día Mundial)\b/i;
 
 const JUNK_EXTRACT =
-  /(es|fue|era) (un|una|el|la) (organismo|organización|institución|instituto|entidad|agencia|empresa|compañía|asociación|federación|fundación|universidad|facultad|colegio|hospital|museo|revista|editorial|premio|certamen|película|serie|novela|álbum|canción|banda|grupo musical|club|equipo|selección|torneo|municipio|localidad|comuna|ciudad|pueblo|barrio|distrito|provincia|región|país|estado|político|escritor|escritora|actor|actriz|cantante|futbolista|deportista|militar|sacerdote|empresario)/i;
+  /(es|fue|era) (un|una|el|la) (organismo|organización|institución|instituto|entidad|agencia|empresa|compañía|asociación|federación|fundación|universidad|facultad|colegio|hospital|museo|revista|editorial|premio|certamen|película|serie|novela|álbum|canción|banda|grupo musical|club|equipo|selección|torneo|municipio|localidad|comuna|ciudad|pueblo|barrio|distrito|provincia|región|país|estado|político|política|escritor|escritora|actor|actriz|cantante|futbolista|baloncestista|tenista|deportista|entrenador|entrenadora|ejecutivo|ejecutiva|dirigente|directivo|directiva|empresario|empresaria|economista|psicólogo|psicóloga|psiquiatra|filósofo|filósofa|sociólogo|socióloga|historiador|historiadora|periodista|abogado|abogada|médico|médica|científico|científica|físico|física teórica|químico|matemático|matemática|ingeniero|ingeniera|arquitecto|arquitecta|pintor|pintora|escultor|poeta|novelista|compositor|compositora|músico|música de|director|directora|productor|productora|modelo|presentador|presentadora|militar|sacerdote|obispo|papa|monje|rey|reina|emperador|emperatriz|príncipe|princesa)/i;
 
 // Biografías: suelen abrir con «Nombre (Lugar, 1953 - …)»
-const PERSON_INTRO = /^[^.]{0,90}\(.{0,40}\d{3,4}/;
+const PERSON_INTRO = /^[^.]{0,90}\(.{0,60}\d{3,4}/;
 
-function isQualityCard(title, extract) {
+// Biografías sin fecha: «es un/una … español/estadounidense/…»
+const BIO_NATIONALITY =
+  /(es|fue|era) (un|una) [^.]{0,60}\b(español|española|estadounidense|mexican|argentin|británic|francés|francesa|alemán|alemana|italian|colombian|chilen|peruan|canadiense|japonés|japonesa|chin[oa]|rus[oa]|suec[oa]|neerlandés|austriac|suiz[oa]|belga|portugués|portuguesa|brasileñ|australian|indi[oa]|israelí|polac[oa]|danés|noruega?|finlandés|irlandés|escocés|galés|grieg[oa]|turc[oa]|corean|cuban|venezolan|uruguay|ecuatorian|bolivian|paraguay|dominican|puertorriqueñ|hondureñ|guatemaltec|nicaragüense|costarricense|panameñ|salvadoreñ)/i;
+
+// La descripción corta de Wikipedia delata personas, obras y lugares
+// con mucha más fiabilidad que el texto («ejecutivo de baloncesto
+// estadounidense», «futbolista español», «película de 1994»…).
+// (con raíces sin terminación para cubrir masculino y femenino)
+const JUNK_DESCRIPTION =
+  /(futbolista|baloncestista|jugador|tenista|ciclista|piloto|deportista|atleta|entrenador|ejecutiv|dirigente|directiv|actor|actriz|cantante|músic|compositor|escritor|poeta|novelista|polític|empresari|economista|psicólog|psiquiatra|filósof|sociólog|historiador|periodista|abogad|médic|cirujan|científic|físic|químic|matemátic|ingenier|arquitect|pintor|escultor|fotógraf|director|productor|modelo|presentador|youtuber|militar|sacerdote|obispo|papa|monja|monje|rey de|reina de|emperador|emperatriz|persona|biografía|nacid|fallecid|organización|organismo|institución|instituto|empresa|compañía|asociación|fundación|universidad|club|equipo|selección|banda|grupo musical|revista|editorial|película|serie de|álbum|canción|sencillo|videojuego|municipio|ciudad|capital|localidad|comuna|provincia|región|país|río|montaña|lago|isla|edificio|estadio|aeropuerto|batalla|guerra)/i;
+
+function isQualityCard(title, extract, description) {
   if (!title || !extract || extract.length < 140) return false;
+  if (description && JUNK_DESCRIPTION.test(description)) return false;
   if (JUNK_TITLE.test(title)) return false;
-  if (JUNK_EXTRACT.test(extract.slice(0, 220))) return false;
+  const intro = extract.slice(0, 260);
+  if (JUNK_EXTRACT.test(intro)) return false;
   if (PERSON_INTRO.test(extract)) return false;
+  if (BIO_NATIONALITY.test(intro)) return false;
   return true;
 }
 
@@ -111,7 +126,7 @@ const WIKI_CATEGORY_URL = (cat) =>
 const WIKI_EXTRACTS_URL = (titles) =>
   "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
   `&titles=${encodeURIComponent(titles.join("|"))}` +
-  "&prop=extracts%7Cinfo&exintro=1&explaintext=1&exlimit=max&inprop=url";
+  "&prop=extracts%7Cinfo%7Cdescription&exintro=1&explaintext=1&exlimit=max&inprop=url";
 
 const categoryCache = {}; // categoría -> títulos de artículos (por sesión)
 
@@ -129,7 +144,7 @@ async function getCategoryMembers(cat) {
 
 function pagesToCards(pages, topicId) {
   return pages
-    .filter((p) => isQualityCard(p.title, p.extract))
+    .filter((p) => isQualityCard(p.title, p.extract, p.description))
     .map((p) => ({
       id: "wiki-" + p.pageid,
       topic: topicId,
@@ -181,7 +196,7 @@ async function fetchRandomWikiCard() {
   if (!res.ok) throw new Error("HTTP " + res.status);
   const p = await res.json();
   // Solo artículos normales que pasen el filtro de calidad
-  if (p.type !== "standard" || !isQualityCard(p.title, p.extract)) return null;
+  if (p.type !== "standard" || !isQualityCard(p.title, p.extract, p.description)) return null;
   return {
     id: "wiki-" + p.pageid,
     topic: "descubre",
@@ -249,7 +264,7 @@ async function refillWikiBuffer() {
 function renderCatalogInfo() {
   const el = $("#catalog-info");
   if (!el) return;
-  el.textContent = "Contenido en vivo desde Wikipedia en español · sin límites";
+  el.textContent = `Contenido en vivo desde Wikipedia en español · sin límites · v${APP_VERSION}`;
 }
 
 // ---------- persistencia ----------
