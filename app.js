@@ -40,19 +40,54 @@ const WIKI_SEARCH_URL = (query, offset) =>
   `&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=10&gsroffset=${offset}` +
   "&prop=extracts%7Cinfo&exintro=1&explaintext=1&exlimit=max&inprop=url";
 
-// Términos de búsqueda por tema. Cada petición elige uno al azar y un
-// desplazamiento aleatorio, así el pozo de artículos apenas se repite.
-const TOPIC_QUERIES = {
-  enfoque:       ["atención psicología", "concentración mental", "distracción cognitiva", "atención plena meditación"],
-  productividad: ["productividad trabajo", "gestión del tiempo", "procrastinación", "eficiencia método trabajo"],
-  habitos:       ["hábito psicología", "motivación conducta", "autocontrol psicología", "rutina comportamiento"],
-  mentalidad:    ["sesgo cognitivo", "resiliencia psicología", "estoicismo filosofía", "inteligencia emocional"],
-  salud:         ["ejercicio físico salud", "nutrición alimentación", "sueño descanso", "bienestar salud mental"],
-  creatividad:   ["creatividad", "proceso creativo innovación", "pensamiento lateral", "imaginación psicología"],
-  dinero:        ["finanzas personales", "ahorro inversión", "economía conductual", "interés compuesto"],
-  aprendizaje:   ["memoria aprendizaje", "técnicas de estudio", "neurociencia aprendizaje", "psicología educativa"],
-  relaciones:    ["comunicación interpersonal", "empatía psicología", "psicología social relaciones", "asertividad"],
+// Categorías de Wikipedia por tema: agrupan artículos de CONCEPTOS
+// (técnicas, efectos, fenómenos), que es lo que queremos en el feed.
+// Si una categoría no existe o viene vacía, se usa la búsqueda de
+// respaldo (TOPIC_QUERIES) con los mismos filtros de calidad.
+const TOPIC_CATEGORIES = {
+  enfoque:       ["Atención", "Atención plena", "Meditación"],
+  productividad: ["Gestión del tiempo", "Productividad", "Toma de decisiones"],
+  habitos:       ["Hábitos", "Motivación", "Comportamiento humano"],
+  mentalidad:    ["Sesgos cognitivos", "Psicología positiva", "Estoicismo", "Emociones"],
+  salud:         ["Sueño", "Ejercicio físico", "Nutrición aplicada", "Salud mental"],
+  creatividad:   ["Creatividad", "Innovación", "Resolución de problemas"],
+  dinero:        ["Finanzas personales", "Economía conductual", "Ahorro"],
+  aprendizaje:   ["Aprendizaje", "Memoria", "Mnemotecnia"],
+  relaciones:    ["Psicología social", "Comunicación no verbal", "Amistad"],
 };
+
+// Búsqueda de respaldo por tema (cuando la categoría no da resultados).
+const TOPIC_QUERIES = {
+  enfoque:       ["atención psicología", "concentración mental", "atención plena meditación"],
+  productividad: ["productividad método", "gestión del tiempo", "procrastinación"],
+  habitos:       ["hábito psicología", "motivación conducta", "autocontrol psicología"],
+  mentalidad:    ["sesgo cognitivo", "resiliencia psicología", "inteligencia emocional"],
+  salud:         ["higiene del sueño", "efecto ejercicio físico", "bienestar psicológico"],
+  creatividad:   ["pensamiento creativo", "pensamiento lateral", "proceso creativo"],
+  dinero:        ["finanzas personales concepto", "interés compuesto", "economía conductual"],
+  aprendizaje:   ["técnica de estudio", "efecto memoria psicología", "curva del olvido"],
+  relaciones:    ["comunicación interpersonal", "empatía psicología", "asertividad"],
+};
+
+// ---------- filtros de calidad ----------
+// Wikipedia mezcla conceptos con organismos, biografías, lugares, obras…
+// Estos filtros descartan lo que no aporta a una app de crecimiento.
+const JUNK_TITLE =
+  /^(Anexo:|Categoría:|Portal:|Wikiproyecto:)|\b(Instituto|Universidad|Asociación|Organización|Federación|Confederación|Fundación|Ministerio|Secretaría|Facultad|Colegio|Hospital|Museo|Revista|Editorial|Premio|Congreso|Consejo|Agencia|Comité|Observatorio|Día Internacional|Día Mundial)\b/i;
+
+const JUNK_EXTRACT =
+  /(es|fue|era) (un|una|el|la) (organismo|organización|institución|instituto|entidad|agencia|empresa|compañía|asociación|federación|fundación|universidad|facultad|colegio|hospital|museo|revista|editorial|premio|certamen|película|serie|novela|álbum|canción|banda|grupo musical|club|equipo|selección|torneo|municipio|localidad|comuna|ciudad|pueblo|barrio|distrito|provincia|región|país|estado|político|escritor|escritora|actor|actriz|cantante|futbolista|deportista|militar|sacerdote|empresario)/i;
+
+// Biografías: suelen abrir con «Nombre (Lugar, 1953 - …)»
+const PERSON_INTRO = /^[^.]{0,90}\(.{0,40}\d{3,4}/;
+
+function isQualityCard(title, extract) {
+  if (!title || !extract || extract.length < 140) return false;
+  if (JUNK_TITLE.test(title)) return false;
+  if (JUNK_EXTRACT.test(extract.slice(0, 220))) return false;
+  if (PERSON_INTRO.test(extract)) return false;
+  return true;
+}
 
 let wikiBuffer = [];        // tarjetas dinámicas listas para el feed
 let wikiFetching = false;
@@ -69,17 +104,32 @@ function trimBody(text) {
   return text.length > 420 ? text.slice(0, 400).trimEnd() + "…" : text;
 }
 
-async function fetchTopicBatch(topicId) {
-  const queries = TOPIC_QUERIES[topicId];
-  if (!queries) return [];
-  const query = queries[Math.floor(Math.random() * queries.length)];
-  const offset = Math.floor(Math.random() * 40);
-  const res = await fetch(WIKI_SEARCH_URL(query, offset));
+const WIKI_CATEGORY_URL = (cat) =>
+  "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
+  `&list=categorymembers&cmtitle=${encodeURIComponent("Categoría:" + cat)}&cmlimit=100&cmtype=page`;
+
+const WIKI_EXTRACTS_URL = (titles) =>
+  "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
+  `&titles=${encodeURIComponent(titles.join("|"))}` +
+  "&prop=extracts%7Cinfo&exintro=1&explaintext=1&exlimit=max&inprop=url";
+
+const categoryCache = {}; // categoría -> títulos de artículos (por sesión)
+
+async function getCategoryMembers(cat) {
+  if (categoryCache[cat]) return categoryCache[cat];
+  const res = await fetch(WIKI_CATEGORY_URL(cat));
   if (!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
-  const pages = (data.query && data.query.pages) || [];
+  const titles = ((data.query && data.query.categorymembers) || [])
+    .map((m) => m.title)
+    .filter((t) => !JUNK_TITLE.test(t));
+  categoryCache[cat] = titles;
+  return titles;
+}
+
+function pagesToCards(pages, topicId) {
   return pages
-    .filter((p) => p.extract && p.extract.length >= 120)
+    .filter((p) => isQualityCard(p.title, p.extract))
     .map((p) => ({
       id: "wiki-" + p.pageid,
       topic: topicId,
@@ -90,12 +140,48 @@ async function fetchTopicBatch(topicId) {
     }));
 }
 
+async function fetchExtractsFor(titles, topicId) {
+  const res = await fetch(WIKI_EXTRACTS_URL(titles));
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  return pagesToCards((data.query && data.query.pages) || [], topicId);
+}
+
+// Respaldo: búsqueda libre (con los mismos filtros de calidad)
+async function fetchSearchBatch(topicId) {
+  const queries = TOPIC_QUERIES[topicId];
+  if (!queries) return [];
+  const query = queries[Math.floor(Math.random() * queries.length)];
+  const offset = Math.floor(Math.random() * 20);
+  const res = await fetch(WIKI_SEARCH_URL(query, offset));
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  return pagesToCards((data.query && data.query.pages) || [], topicId);
+}
+
+// Tanda de tarjetas de un tema: primero su categoría de Wikipedia
+// (artículos de conceptos), y si no da fruto, la búsqueda de respaldo.
+async function fetchTopicBatch(topicId) {
+  const cats = TOPIC_CATEGORIES[topicId] || [];
+  if (cats.length) {
+    const cat = cats[Math.floor(Math.random() * cats.length)];
+    try {
+      const titles = await getCategoryMembers(cat);
+      if (titles.length >= 4) {
+        const cards = await fetchExtractsFor(shuffle(titles).slice(0, 10), topicId);
+        if (cards.length >= 3) return cards;
+      }
+    } catch { /* categoría inexistente o sin red: prueba el respaldo */ }
+  }
+  return fetchSearchBatch(topicId);
+}
+
 async function fetchRandomWikiCard() {
   const res = await fetch(WIKI_RANDOM_URL);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const p = await res.json();
-  // Solo artículos normales con un resumen con sustancia
-  if (p.type !== "standard" || !p.extract || p.extract.length < 120) return null;
+  // Solo artículos normales que pasen el filtro de calidad
+  if (p.type !== "standard" || !isQualityCard(p.title, p.extract)) return null;
   return {
     id: "wiki-" + p.pageid,
     topic: "descubre",
@@ -441,6 +527,8 @@ async function fetchExploreCards(query, topicId) {
     const res = await fetch(WIKI_SEARCH_URL(q, 0));
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
+    // En búsqueda libre no se aplica el filtro anti-organismos: si el
+    // usuario busca «INCAP» quiere ese resultado. Solo pide sustancia.
     return ((data.query && data.query.pages) || [])
       .filter((p) => p.extract && p.extract.length >= 120)
       .map((p) => ({
