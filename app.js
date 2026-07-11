@@ -24,69 +24,6 @@ let state = loadState();
 let queue = [];           // cola de ideas del feed
 let currentIdea = null;
 
-// ---------- catálogo externo ----------
-// La app arranca con las ideas incluidas en data.js y luego sincroniza
-// con IDEAS_SOURCE_URL. La última descarga se cachea en localStorage
-// para que el catálogo completo funcione también sin conexión.
-const CATALOG_CACHE_KEY = "hyperfocus-catalog-v1";
-const BUILTIN_COUNT = IDEAS.length;
-let catalogStatus = "local"; // local | cache | online | error
-
-function mergeCatalog(ext) {
-  if (!ext || !Array.isArray(ext.ideas)) return false;
-  let changed = false;
-  (ext.topics || []).forEach((t) => {
-    if (t && t.id && t.name && !TOPICS.some((x) => x.id === t.id)) {
-      TOPICS.push({ emoji: "💡", color: "#9aa1bd", ...t });
-      changed = true;
-    }
-  });
-  ext.ideas.forEach((i) => {
-    if (!i || !i.id || !i.title || !i.body || !TOPICS.some((t) => t.id === i.topic)) return;
-    const idx = IDEAS.findIndex((x) => x.id === i.id);
-    if (idx >= 0) IDEAS[idx] = i;
-    else IDEAS.push(i);
-    changed = true;
-  });
-  return changed;
-}
-
-function loadCachedCatalog() {
-  try {
-    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
-    if (raw && mergeCatalog(JSON.parse(raw))) catalogStatus = "cache";
-  } catch { /* caché corrupta: se ignora */ }
-}
-
-async function fetchCatalog() {
-  try {
-    const res = await fetch(IDEAS_SOURCE_URL, { cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(data));
-    mergeCatalog(data);
-    catalogStatus = "online";
-    onCatalogUpdated();
-  } catch {
-    if (catalogStatus !== "cache") catalogStatus = "error";
-    renderCatalogInfo();
-  }
-}
-
-// Refresca las vistas que dependen del catálogo sin interrumpir
-// la tarjeta que el usuario esté leyendo.
-function onCatalogUpdated() {
-  if (!state.onboarded) renderOnboardingInterests();
-  renderTopicPills();
-  renderExplore();
-  if (state.onboarded) {
-    buildQueue();
-    if (!currentIdea) nextCard();
-    renderProfile();
-  }
-  renderCatalogInfo();
-}
-
 // ---------- fuente dinámica: Wikipedia en español ----------
 // TODOS los temas se alimentan en vivo de la API pública de Wikimedia
 // (gratuita, sin claves, con CORS abierto). Cada tema busca artículos
@@ -119,9 +56,10 @@ const TOPIC_QUERIES = {
 
 let wikiBuffer = [];        // tarjetas dinámicas listas para el feed
 let wikiFetching = false;
+let wikiFailed = false;     // última recarga falló (¿sin conexión?)
 let onThisDayPool = null;   // efemérides de hoy (se piden una vez por sesión)
 let readsSinceDynamic = 0;  // para espaciar las tarjetas dinámicas
-let allStaticRead = false;  // catálogo local agotado → feed casi todo dinámico
+let allStaticRead = false;  // tarjetas locales agotadas → feed todo dinámico
 
 function dynamicActive() {
   return state.interests.length > 0;
@@ -209,21 +147,23 @@ async function refillWikiBuffer() {
         seen.add(c.id);
       }
     });
-  } catch { /* sin red: el feed sigue con el catálogo local */ }
+    wikiFailed = false;
+  } catch {
+    wikiFailed = true; // sin red: se reintenta en la próxima interacción
+  }
   wikiFetching = false;
+  // Si el usuario estaba esperando (feed vacío), avanza en cuanto haya
+  // tarjetas; si la carga falló, muestra el estado de reintento.
+  if (state.onboarded && !currentIdea) {
+    if (wikiBuffer.length) nextCard();
+    else renderCard(null);
+  }
 }
 
 function renderCatalogInfo() {
   const el = $("#catalog-info");
   if (!el) return;
-  const extra = IDEAS.length - BUILTIN_COUNT;
-  const statusText = {
-    online: `sincronizado con la fuente externa (+${extra} ideas)`,
-    cache: `sin conexión — usando la última copia descargada (+${extra} ideas)`,
-    error: "no se pudo cargar la fuente externa — usando ideas locales",
-    local: "usando ideas locales",
-  }[catalogStatus];
-  el.textContent = `${IDEAS.length} ideas en el catálogo · ${statusText}`;
+  el.textContent = "Contenido en vivo desde Wikipedia en español · sin límites";
 }
 
 // ---------- persistencia ----------
@@ -382,7 +322,10 @@ function nextCard() {
 function renderCard(idea) {
   const stage = $("#card-stage");
   if (!idea) {
-    stage.innerHTML = `<div class="empty-state"><span class="big">🌵</span><p>No hay ideas para tus intereses.<br>Añade más temas en tu perfil.</p></div>`;
+    // El contenido llega de la red: distingue «cargando» de «sin conexión»
+    stage.innerHTML = wikiFailed
+      ? `<div class="empty-state"><span class="big">📡</span><p>No se pudieron cargar ideas.<br>Revisa tu conexión.</p><button class="btn btn-primary" id="btn-retry">Reintentar</button></div>`
+      : `<div class="empty-state"><span class="big">⏳</span><p>Cargando ideas nuevas…</p></div>`;
     return;
   }
   const topic = topicById(idea.topic);
@@ -418,6 +361,7 @@ function findIdeaById(id) {
   return (
     IDEAS.find((i) => i.id === id) ||
     state.savedDynamic.find((i) => i.id === id) ||
+    exploreResults.find((i) => i.id === id) ||
     (currentIdea && currentIdea.id === id ? currentIdea : null)
   );
 }
@@ -460,15 +404,16 @@ function showGoalToast() {
 let exploreTopic = null;
 
 function renderTopicPills() {
-  // Solo temas con ideas en el catálogo; los dinámicos («Descubre»)
-  // viven en el feed, no en el buscador.
-  const withIdeas = TOPICS.filter((t) => IDEAS.some((i) => i.topic === t.id));
   $("#topic-list").innerHTML =
     `<button class="topic-pill ${!exploreTopic ? "selected" : ""}" data-topic="">✨ Todos</button>` +
-    withIdeas.map(
+    TOPICS.map(
       (t) => `<button class="topic-pill ${exploreTopic === t.id ? "selected" : ""}" data-topic="${t.id}">${t.emoji} ${t.name}</button>`
     ).join("");
 }
+
+let exploreResults = [];   // últimos resultados (para poder guardarlos)
+let exploreSeq = 0;        // descarta respuestas obsoletas
+let exploreDebounce = null;
 
 function initExplore() {
   renderTopicPills();
@@ -482,17 +427,65 @@ function initExplore() {
     renderExplore();
   });
 
-  $("#search-input").addEventListener("input", renderExplore);
+  $("#search-input").addEventListener("input", () => {
+    clearTimeout(exploreDebounce);
+    exploreDebounce = setTimeout(renderExplore, 400);
+  });
 }
 
-function renderExplore() {
-  const q = $("#search-input").value.trim().toLowerCase();
-  let results = IDEAS;
-  if (exploreTopic) results = results.filter((i) => i.topic === exploreTopic);
-  if (q) results = results.filter((i) => (i.title + " " + i.body).toLowerCase().includes(q));
-  $("#explore-results").innerHTML = results.length
-    ? results.map(ideaRowHtml).join("")
+// Trae los resultados de Explorar según búsqueda y tema seleccionados
+async function fetchExploreCards(query, topicId) {
+  if (query) {
+    // Búsqueda libre en Wikipedia (acotada al tema si hay uno elegido)
+    const q = topicId && TOPIC_QUERIES[topicId] ? `${query} ${TOPIC_QUERIES[topicId][0]}` : query;
+    const res = await fetch(WIKI_SEARCH_URL(q, 0));
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    return ((data.query && data.query.pages) || [])
+      .filter((p) => p.extract && p.extract.length >= 120)
+      .map((p) => ({
+        id: "wiki-" + p.pageid,
+        topic: topicId || "descubre",
+        title: p.title,
+        body: trimBody(p.extract),
+        url: p.fullurl || null,
+        source: "Wikipedia · CC BY-SA",
+      }));
+  }
+  if (topicId === "descubre") {
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, () => fetchRandomWikiCard())
+    );
+    return results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
+  }
+  if (topicId) return fetchTopicBatch(topicId);
+  // «Todos» sin búsqueda: una tanda de un interés del usuario al azar
+  const pool = state.interests.length ? state.interests : TOPICS.map((t) => t.id);
+  const randomTopic = pool[Math.floor(Math.random() * pool.length)];
+  return fetchExploreCards("", randomTopic);
+}
+
+// Repinta los resultados ya cargados (p. ej. tras guardar) sin refetch
+function renderExploreRows() {
+  $("#explore-results").innerHTML = exploreResults.length
+    ? exploreResults.map(ideaRowHtml).join("")
     : `<div class="empty-state"><span class="big">🔍</span><p>Sin resultados para tu búsqueda.</p></div>`;
+}
+
+async function renderExplore() {
+  const q = $("#search-input").value.trim();
+  const seq = ++exploreSeq;
+  const box = $("#explore-results");
+  box.innerHTML = `<div class="empty-state"><span class="big">⏳</span><p>Buscando en Wikipedia…</p></div>`;
+  try {
+    const cards = await fetchExploreCards(q, exploreTopic);
+    if (seq !== exploreSeq) return; // ya hay una búsqueda más reciente
+    exploreResults = cards;
+    renderExploreRows();
+  } catch {
+    if (seq !== exploreSeq) return;
+    box.innerHTML = `<div class="empty-state"><span class="big">📡</span><p>No se pudo buscar.<br>Revisa tu conexión.</p></div>`;
+  }
 }
 
 // ---------- guardadas ----------
@@ -523,13 +516,22 @@ function ideaRowHtml(idea) {
     </div>`;
 }
 
+// Delegación: reintentar carga del feed
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#btn-retry")) {
+    wikiFailed = false;
+    renderCard(null);
+    refillWikiBuffer();
+  }
+});
+
 // Delegación: guardar/quitar desde cualquier lista
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-save]");
   if (!btn) return;
   toggleSave(btn.dataset.save);
   renderSaved();
-  renderExplore();
+  renderExploreRows();
   if (currentIdea) renderCard(currentIdea);
   renderStats();
 });
@@ -619,8 +621,6 @@ function startApp() {
 }
 
 function init() {
-  loadCachedCatalog(); // aplica la última copia descargada antes de pintar nada
-
   // Migración: activar «Descubre» una vez a quien ya usaba la app
   if (state.onboarded && !state.dynamicMigrated) {
     if (!state.interests.includes("descubre")) state.interests.push("descubre");
@@ -633,7 +633,6 @@ function init() {
   initExplore();
   initProfile();
   initNav();
-  fetchCatalog();      // sincroniza en segundo plano con la fuente externa
   refillWikiBuffer();  // precarga tarjetas dinámicas de Wikipedia
 
   $("#btn-skip").addEventListener("click", skipCard);

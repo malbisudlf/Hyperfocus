@@ -1,25 +1,25 @@
 # ⚡ Hyperfocus
 
-Una app de **microlearning gratuita y de código abierto**: sustituye el scroll infinito por ideas breves que te hacen crecer. Inspirada en el concepto de apps como Deepstash, pero 100% gratis, sin anuncios, sin cuentas y sin servidor.
+Una app de **microlearning gratuita y de código abierto**: sustituye el scroll infinito por ideas breves que te hacen crecer. Inspirada en el concepto de apps como Deepstash, pero 100% gratis, sin anuncios, sin cuentas y sin servidor propio.
 
 ## ✨ Funcionalidades
 
-- **Feed de ideas** — tarjetas breves (~1 min de lectura) sobre los temas que elijas.
-- **8 temas** — Enfoque, Productividad, Hábitos, Mentalidad, Salud, Creatividad, Dinero y Aprendizaje, con 48 ideas originales en español.
-- **Guardadas** — guarda las ideas que te inspiren en tu biblioteca personal.
+- **Contenido casi ilimitado, sin mantener nada** — todas las tarjetas llegan en vivo desde la API pública de Wikipedia en español (gratuita, sin claves): cada tema busca artículos relacionados y el feed nunca se acaba.
+- **10 temas** — Enfoque, Productividad, Hábitos, Mentalidad, Salud, Creatividad, Dinero, Aprendizaje, Relaciones y Descubre 🌍 (artículos al azar + efemérides del día).
+- **Explorar en vivo** — el buscador consulta Wikipedia directamente: escribe cualquier cosa o filtra por tema.
+- **Guardadas** — las tarjetas que guardes se almacenan completas en tu navegador y no se pierden.
 - **Meta diaria y racha 🔥** — elige cuántas ideas leer al día (3 / 5 / 10) y mantén tu racha.
-- **Explorar** — busca ideas por texto o navega por tema.
-- **Perfil** — estadísticas de progreso, edición de intereses y meta diaria.
-- **Sin backend** — todo tu progreso se guarda en `localStorage` de tu navegador. Privacidad total.
-- **Contenido casi ilimitado en todos los temas** — cada sección se alimenta en vivo de la API pública de Wikipedia en español (gratuita, sin claves): artículos relacionados con cada tema, intercalados en tu feed. Cada tarjeta enlaza a su fuente. El tema «Descubre» 🌍 añade además artículos al azar y efemérides del día.
-- **Fuente externa de ideas** — al arrancar, la app también sincroniza con `ideas.json`: puedes ampliar el catálogo editando ese archivo, sin tocar código. Funciona offline gracias a una caché local.
+- **Sin repetidos** — las tarjetas ya leídas no vuelven a aparecer.
+- **Sin backend propio** — tu progreso vive en `localStorage`. Privacidad total.
 
 ## 🚀 Cómo usarla
 
-### Opción 1: abrir directamente
-Descarga el repo y abre `index.html` en tu navegador. Ya está.
+### Publicarla gratis en GitHub Pages (recomendado)
+1. Ve a **Settings → Pages** en este repositorio.
+2. En *Source*, elige la rama `main` y la carpeta `/ (root)`.
+3. En un minuto tendrás la app en `https://<tu-usuario>.github.io/Hyperfocus/`.
 
-### Opción 2: servidor local
+### Servidor local
 ```bash
 python3 -m http.server 8080
 # o
@@ -27,10 +27,7 @@ npx serve .
 ```
 Y visita `http://localhost:8080`.
 
-### Opción 3: publicarla gratis en GitHub Pages
-1. Ve a **Settings → Pages** en este repositorio.
-2. En *Source*, elige la rama principal y la carpeta `/ (root)`.
-3. Guarda: en un minuto tendrás la app en `https://<tu-usuario>.github.io/Hyperfocus/`.
+> El contenido llega de la API de Wikipedia, así que la app necesita conexión. Sin red, muestra un estado de reintento y tus guardadas siguen disponibles.
 
 ## 🧱 Tecnología
 
@@ -40,61 +37,25 @@ HTML + CSS + JavaScript puro. Cero dependencias, cero build, cero coste.
 |---|---|
 | `index.html` | Estructura de las pantallas (onboarding, feed, explorar, guardadas, perfil) |
 | `styles.css` | Estilos (tema oscuro, mobile-first) |
-| `data.js` | Los temas y las tarjetas de ideas |
-| `app.js` | Lógica: feed, rachas, metas, guardado, navegación |
+| `data.js` | La lista de temas (colores, emojis) |
+| `app.js` | Lógica: fuente dinámica de Wikipedia, feed, rachas, metas, guardado, navegación |
 
-## ➕ Añadir tus propias ideas (sin tocar código)
+## 🌐 Cómo funciona la fuente externa
 
-La app se sincroniza al arrancar con una **fuente externa**: el archivo [`ideas.json`](ideas.json). Para ampliar el catálogo, edita ese archivo directamente en GitHub (vale desde el móvil) y añade objetos al array `ideas`:
+Todo el contenido se obtiene en el momento desde la API REST y la API de acción de Wikimedia:
 
-```json
-{
-  "id": "mi-idea-1",
-  "topic": "enfoque",
-  "title": "Título corto y potente",
-  "body": "El cuerpo de la idea, en unas 3-4 frases."
-}
-```
+- **Artículos por tema** — cada sección busca artículos con sus términos semilla (`TOPIC_QUERIES` en `app.js`), eligiendo término y desplazamiento al azar en cada tanda para que apenas se repita nada.
+- **Artículos al azar** — `es.wikipedia.org/api/rest_v1/page/random/summary` (tema Descubre).
+- **Efemérides de hoy** — `es.wikipedia.org/api/rest_v1/feed/onthisday/events/{mes}/{día}` (tema Descubre).
+- **Buscador de Explorar** — búsqueda libre con `generator=search`, acotada al tema seleccionado si hay uno.
 
-También puedes crear temas nuevos en el array `topics`:
+No requiere clave ni registro. El texto de Wikipedia es CC BY-SA y cada tarjeta enlaza a su artículo original.
 
-```json
-{ "id": "cocina", "name": "Cocina", "emoji": "🍳", "color": "#ffb142" }
-```
+### Personalizar
 
-Al guardar el archivo, la app publicada en GitHub Pages mostrará las ideas nuevas en la siguiente visita. Reglas:
-
-- El `id` de cada idea debe ser único (si repites uno existente, la nueva versión **reemplaza** a la antigua — útil para corregir erratas).
-- El `topic` debe existir en `TOPICS` (de `data.js`) o en el array `topics` del propio JSON.
-- Las ideas con formato inválido se ignoran sin romper la app.
-
-### Cómo funciona la sincronización
-
-1. La app arranca al instante con las 48 ideas incluidas en `data.js`.
-2. En segundo plano descarga `ideas.json` y fusiona su contenido.
-3. La descarga se guarda en caché (`localStorage`), así el catálogo completo sigue disponible sin conexión.
-4. En **Perfil** puedes ver el tamaño del catálogo y el estado de la sincronización.
-
-### Contenido dinámico en vivo (todos los temas)
-
-El feed intercala tarjetas dinámicas obtenidas en el momento desde la API pública de Wikimedia — 1 de cada 3 tarjetas mientras te queden ideas locales por leer, y casi todas cuando ya agotaste el catálogo, así el contenido nunca se acaba:
-
-- **Artículos por tema** — cada sección (Enfoque, Hábitos, Dinero…) busca artículos relacionados con sus términos semilla (`TOPIC_QUERIES` en `app.js`), eligiendo término y desplazamiento al azar en cada tanda para que apenas se repita nada.
-- **Artículos al azar y efemérides de hoy** — el tema «Descubre» 🌍 usa además `page/random/summary` y `feed/onthisday`.
-
-No requiere clave ni registro. Las tarjetas dinámicas que guardes se almacenan completas en tu biblioteca (con su enlace a la fuente), así siguen ahí aunque no vuelvan a aparecer en la API. Las ya leídas no se repiten. Si no hay conexión, el feed continúa con el catálogo local sin errores. El texto de Wikipedia es CC BY-SA y cada tarjeta enlaza a su artículo original.
-
-¿Quieres afinar qué artículos salen en cada tema? Edita los términos de búsqueda en `TOPIC_QUERIES` (en `app.js`).
-
-### Usar otra fuente
-
-Cambia la constante `IDEAS_SOURCE_URL` al principio de `data.js` por cualquier URL que devuelva JSON con el formato `{ "topics": [...], "ideas": [...] }` — por ejemplo un Gist de GitHub:
-
-```js
-const IDEAS_SOURCE_URL = "https://gist.githubusercontent.com/<usuario>/<id>/raw/ideas.json";
-```
-
-> Nota: la sincronización necesita que la app se sirva por HTTP (GitHub Pages, `python3 -m http.server`…). Si abres `index.html` directamente como archivo, la app funciona igualmente con las ideas incluidas.
+- **Afinar qué artículos salen por tema**: edita los términos de búsqueda en `TOPIC_QUERIES` (en `app.js`).
+- **Añadir temas nuevos**: añade el tema en `TOPICS` (`data.js`) y sus términos en `TOPIC_QUERIES`.
+- **Tarjetas fijas propias** (opcional): el array `IDEAS` de `data.js` acepta tarjetas `{ id, topic, title, body }` que se mezclan con el contenido dinámico.
 
 ## ⌨️ Atajos de teclado
 
