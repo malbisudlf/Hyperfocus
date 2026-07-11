@@ -3,6 +3,13 @@
 // Cada idea: id, topic, title, body
 // ============================================================
 
+// Fuente externa de ideas. Por defecto apunta al ideas.json del
+// propio repo (funciona en GitHub Pages y en servidor local), pero
+// puedes cambiarla por cualquier URL que devuelva JSON con el
+// formato { topics: [...], ideas: [...] }, p. ej. un Gist:
+//   "https://gist.githubusercontent.com/usuario/id/raw/ideas.json"
+const IDEAS_SOURCE_URL = "ideas.json";
+
 const TOPICS = [
   { id: "enfoque",       name: "Enfoque",       emoji: "🎯", color: "#7c5cff" },
   { id: "productividad", name: "Productividad", emoji: "⚡", color: "#ff9f43" },

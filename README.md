@@ -11,6 +11,7 @@ Una app de **microlearning gratuita y de código abierto**: sustituye el scroll 
 - **Explorar** — busca ideas por texto o navega por tema.
 - **Perfil** — estadísticas de progreso, edición de intereses y meta diaria.
 - **Sin backend** — todo tu progreso se guarda en `localStorage` de tu navegador. Privacidad total.
+- **Fuente externa de ideas** — al arrancar, la app sincroniza con `ideas.json`: puedes ampliar el catálogo editando ese archivo, sin tocar código. Funciona offline gracias a una caché local.
 
 ## 🚀 Cómo usarla
 
@@ -41,20 +42,47 @@ HTML + CSS + JavaScript puro. Cero dependencias, cero build, cero coste.
 | `data.js` | Los temas y las tarjetas de ideas |
 | `app.js` | Lógica: feed, rachas, metas, guardado, navegación |
 
-## ➕ Añadir tus propias ideas
+## ➕ Añadir tus propias ideas (sin tocar código)
 
-Edita `data.js` y añade objetos al array `IDEAS`:
+La app se sincroniza al arrancar con una **fuente externa**: el archivo [`ideas.json`](ideas.json). Para ampliar el catálogo, edita ese archivo directamente en GitHub (vale desde el móvil) y añade objetos al array `ideas`:
 
-```js
+```json
 {
-  id: "mi-idea-1",
-  topic: "enfoque", // id de un tema existente
-  title: "Título corto y potente",
-  body: "El cuerpo de la idea, en unas 3-4 frases."
+  "id": "mi-idea-1",
+  "topic": "enfoque",
+  "title": "Título corto y potente",
+  "body": "El cuerpo de la idea, en unas 3-4 frases."
 }
 ```
 
-También puedes crear temas nuevos añadiéndolos al array `TOPICS`.
+También puedes crear temas nuevos en el array `topics`:
+
+```json
+{ "id": "cocina", "name": "Cocina", "emoji": "🍳", "color": "#ffb142" }
+```
+
+Al guardar el archivo, la app publicada en GitHub Pages mostrará las ideas nuevas en la siguiente visita. Reglas:
+
+- El `id` de cada idea debe ser único (si repites uno existente, la nueva versión **reemplaza** a la antigua — útil para corregir erratas).
+- El `topic` debe existir en `TOPICS` (de `data.js`) o en el array `topics` del propio JSON.
+- Las ideas con formato inválido se ignoran sin romper la app.
+
+### Cómo funciona la sincronización
+
+1. La app arranca al instante con las 48 ideas incluidas en `data.js`.
+2. En segundo plano descarga `ideas.json` y fusiona su contenido.
+3. La descarga se guarda en caché (`localStorage`), así el catálogo completo sigue disponible sin conexión.
+4. En **Perfil** puedes ver el tamaño del catálogo y el estado de la sincronización.
+
+### Usar otra fuente
+
+Cambia la constante `IDEAS_SOURCE_URL` al principio de `data.js` por cualquier URL que devuelva JSON con el formato `{ "topics": [...], "ideas": [...] }` — por ejemplo un Gist de GitHub:
+
+```js
+const IDEAS_SOURCE_URL = "https://gist.githubusercontent.com/<usuario>/<id>/raw/ideas.json";
+```
+
+> Nota: la sincronización necesita que la app se sirva por HTTP (GitHub Pages, `python3 -m http.server`…). Si abres `index.html` directamente como archivo, la app funciona igualmente con las ideas incluidas.
 
 ## ⌨️ Atajos de teclado
 

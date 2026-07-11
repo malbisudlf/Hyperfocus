@@ -22,6 +22,82 @@ let state = loadState();
 let queue = [];           // cola de ideas del feed
 let currentIdea = null;
 
+// ---------- catálogo externo ----------
+// La app arranca con las ideas incluidas en data.js y luego sincroniza
+// con IDEAS_SOURCE_URL. La última descarga se cachea en localStorage
+// para que el catálogo completo funcione también sin conexión.
+const CATALOG_CACHE_KEY = "hyperfocus-catalog-v1";
+const BUILTIN_COUNT = IDEAS.length;
+let catalogStatus = "local"; // local | cache | online | error
+
+function mergeCatalog(ext) {
+  if (!ext || !Array.isArray(ext.ideas)) return false;
+  let changed = false;
+  (ext.topics || []).forEach((t) => {
+    if (t && t.id && t.name && !TOPICS.some((x) => x.id === t.id)) {
+      TOPICS.push({ emoji: "💡", color: "#9aa1bd", ...t });
+      changed = true;
+    }
+  });
+  ext.ideas.forEach((i) => {
+    if (!i || !i.id || !i.title || !i.body || !TOPICS.some((t) => t.id === i.topic)) return;
+    const idx = IDEAS.findIndex((x) => x.id === i.id);
+    if (idx >= 0) IDEAS[idx] = i;
+    else IDEAS.push(i);
+    changed = true;
+  });
+  return changed;
+}
+
+function loadCachedCatalog() {
+  try {
+    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+    if (raw && mergeCatalog(JSON.parse(raw))) catalogStatus = "cache";
+  } catch { /* caché corrupta: se ignora */ }
+}
+
+async function fetchCatalog() {
+  try {
+    const res = await fetch(IDEAS_SOURCE_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(data));
+    mergeCatalog(data);
+    catalogStatus = "online";
+    onCatalogUpdated();
+  } catch {
+    if (catalogStatus !== "cache") catalogStatus = "error";
+    renderCatalogInfo();
+  }
+}
+
+// Refresca las vistas que dependen del catálogo sin interrumpir
+// la tarjeta que el usuario esté leyendo.
+function onCatalogUpdated() {
+  if (!state.onboarded) renderOnboardingInterests();
+  renderTopicPills();
+  renderExplore();
+  if (state.onboarded) {
+    buildQueue();
+    if (!currentIdea) nextCard();
+    renderProfile();
+  }
+  renderCatalogInfo();
+}
+
+function renderCatalogInfo() {
+  const el = $("#catalog-info");
+  if (!el) return;
+  const extra = IDEAS.length - BUILTIN_COUNT;
+  const statusText = {
+    online: `sincronizado con la fuente externa (+${extra} ideas)`,
+    cache: `sin conexión — usando la última copia descargada (+${extra} ideas)`,
+    error: "no se pudo cargar la fuente externa — usando ideas locales",
+    local: "usando ideas locales",
+  }[catalogStatus];
+  el.textContent = `${IDEAS.length} ideas en el catálogo · ${statusText}`;
+}
+
 // ---------- persistencia ----------
 function loadState() {
   try {
@@ -103,25 +179,30 @@ function escapeHtml(s) {
 }
 
 // ---------- onboarding ----------
-function initOnboarding() {
-  const grid = $("#interest-grid");
-  grid.innerHTML = TOPICS.map(
-    (t) => `<button class="interest-chip" data-topic="${t.id}"><span>${t.emoji}</span>${t.name}</button>`
-  ).join("");
+const onboardingSelected = new Set();
 
-  const selected = new Set();
-  grid.addEventListener("click", (e) => {
+function renderOnboardingInterests() {
+  $("#interest-grid").innerHTML = TOPICS.map(
+    (t) =>
+      `<button class="interest-chip ${onboardingSelected.has(t.id) ? "selected" : ""}" data-topic="${t.id}"><span>${t.emoji}</span>${t.name}</button>`
+  ).join("");
+}
+
+function initOnboarding() {
+  renderOnboardingInterests();
+
+  $("#interest-grid").addEventListener("click", (e) => {
     const chip = e.target.closest(".interest-chip");
     if (!chip) return;
     const id = chip.dataset.topic;
-    if (selected.has(id)) { selected.delete(id); chip.classList.remove("selected"); }
-    else { selected.add(id); chip.classList.add("selected"); }
-    $("#btn-interests").disabled = selected.size < 3;
+    if (onboardingSelected.has(id)) { onboardingSelected.delete(id); chip.classList.remove("selected"); }
+    else { onboardingSelected.add(id); chip.classList.add("selected"); }
+    $("#btn-interests").disabled = onboardingSelected.size < 3;
   });
 
   $("#btn-start").addEventListener("click", () => showStep(2));
   $("#btn-interests").addEventListener("click", () => {
-    state.interests = [...selected];
+    state.interests = [...onboardingSelected];
     showStep(3);
   });
 
@@ -217,13 +298,18 @@ function showGoalToast() {
 // ---------- explorar ----------
 let exploreTopic = null;
 
-function initExplore() {
-  const list = $("#topic-list");
-  list.innerHTML =
-    `<button class="topic-pill selected" data-topic="">✨ Todos</button>` +
-    TOPICS.map((t) => `<button class="topic-pill" data-topic="${t.id}">${t.emoji} ${t.name}</button>`).join("");
+function renderTopicPills() {
+  $("#topic-list").innerHTML =
+    `<button class="topic-pill ${!exploreTopic ? "selected" : ""}" data-topic="">✨ Todos</button>` +
+    TOPICS.map(
+      (t) => `<button class="topic-pill ${exploreTopic === t.id ? "selected" : ""}" data-topic="${t.id}">${t.emoji} ${t.name}</button>`
+    ).join("");
+}
 
-  list.addEventListener("click", (e) => {
+function initExplore() {
+  renderTopicPills();
+
+  $("#topic-list").addEventListener("click", (e) => {
     const pill = e.target.closest(".topic-pill");
     if (!pill) return;
     $$("#topic-list .topic-pill").forEach((p) => p.classList.remove("selected"));
@@ -330,6 +416,7 @@ function initProfile() {
 
 function renderProfile() {
   renderStats();
+  renderCatalogInfo();
   $$("#profile-goal-options .goal-option").forEach((o) =>
     o.classList.toggle("selected", parseInt(o.dataset.goal, 10) === state.dailyGoal)
   );
@@ -367,10 +454,12 @@ function startApp() {
 }
 
 function init() {
+  loadCachedCatalog(); // aplica la última copia descargada antes de pintar nada
   initOnboarding();
   initExplore();
   initProfile();
   initNav();
+  fetchCatalog();      // sincroniza en segundo plano con la fuente externa
 
   $("#btn-skip").addEventListener("click", skipCard);
   $("#btn-save").addEventListener("click", () => {

@@ -1,0 +1,79 @@
+{
+  "topics": [
+    { "id": "relaciones", "name": "Relaciones", "emoji": "🤝", "color": "#ff9ff3" }
+  ],
+  "ideas": [
+    {
+      "id": "rel-1",
+      "topic": "relaciones",
+      "title": "Escucha para entender, no para responder",
+      "body": "En la mayoría de conversaciones no escuchamos: esperamos nuestro turno mientras preparamos la réplica. Prueba a resumir lo que la otra persona dijo antes de dar tu opinión. Sentirse entendido abre más puertas que tener razón."
+    },
+    {
+      "id": "rel-2",
+      "topic": "relaciones",
+      "title": "Las relaciones se riegan en los momentos pequeños",
+      "body": "La confianza no se construye en las grandes ocasiones, sino en los detalles repetidos: responder al mensaje, recordar el examen de su hijo, preguntar cómo salió aquello. Los gestos pequeños y frecuentes pesan más que los grandes y esporádicos."
+    },
+    {
+      "id": "rel-3",
+      "topic": "relaciones",
+      "title": "Pide ayuda: es un atajo, no una debilidad",
+      "body": "A la gente le gusta ayudar más de lo que crees, y pedir ayuda bien planteada genera cercanía en lugar de rechazo. Sé concreto: no digas «¿me echas una mano?», di «¿puedes revisar este párrafo y decirme si se entiende?»."
+    },
+    {
+      "id": "rel-4",
+      "topic": "relaciones",
+      "title": "Critica la conducta, no a la persona",
+      "body": "Decir «eres un desastre» ataca la identidad y provoca defensa; decir «este informe llegó dos días tarde y eso nos bloqueó» describe un hecho y abre una solución. Los conflictos se resuelven hablando de comportamientos concretos, no de etiquetas."
+    },
+    {
+      "id": "rel-5",
+      "topic": "relaciones",
+      "title": "El elogio concreto vale el doble",
+      "body": "Un «buen trabajo» genérico se olvida en un minuto. Un «la forma en que resumiste el problema al inicio hizo que todos entendieran la reunión» se recuerda semanas. Cuando algo te guste de alguien, dilo con detalle: es gratis y transforma relaciones."
+    },
+    {
+      "id": "rel-6",
+      "topic": "relaciones",
+      "title": "Repara rápido, no perfectamente",
+      "body": "Tras una discusión, el tiempo no cura: enquista. Una reparación torpe pero temprana («me pasé, lo siento, ¿lo hablamos?») vale más que la disculpa perfecta que nunca llega. En las relaciones que duran no hay menos conflictos: hay más reparaciones."
+    },
+    {
+      "id": "enf-7",
+      "topic": "enfoque",
+      "title": "Monotarea: hacer una cosa es la ventaja injusta",
+      "body": "La multitarea es hacer varias cosas mal a la vez y sentirse ocupado como premio de consolación. En un mundo que interrumpe constantemente, la capacidad de hacer una sola cosa hasta terminarla se ha vuelto una superpotencia rara y valiosa."
+    },
+    {
+      "id": "hab-7",
+      "topic": "habitos",
+      "title": "Prepara la noche anterior",
+      "body": "La versión de ti de la mañana tiene poca voluntad y muchas excusas. Déjaselo todo hecho: la ropa de deporte a la vista, el desayuno decidido, la primera tarea del día escrita. Un hábito empieza a las 7:00 se gana a las 23:00 del día anterior."
+    },
+    {
+      "id": "men-7",
+      "topic": "mentalidad",
+      "title": "La regla del 10/10/10",
+      "body": "Ante una decisión difícil, pregúntate cómo te sentirás con cada opción dentro de 10 minutos, 10 meses y 10 años. La perspectiva temporal desinfla los miedos del momento y revela qué importa de verdad. Pocas cosas que dan pánico hoy sobreviven al filtro de los 10 años."
+    },
+    {
+      "id": "sal-7",
+      "topic": "salud",
+      "title": "Movimiento en dosis pequeñas",
+      "body": "No necesitas una hora de gimnasio para que el cuerpo note la diferencia: subir escaleras, caminar en las llamadas, estirarte cada hora. El peor plan de ejercicio es el que exige condiciones perfectas; el mejor es el que cabe en el día que ya tienes."
+    },
+    {
+      "id": "din-7",
+      "topic": "dinero",
+      "title": "Presupuesto inverso: cuenta lo que queda",
+      "body": "Registrar cada gasto agota y se abandona. Alternativa simple: automatiza el ahorro y las facturas a principio de mes, y gasta lo que quede sin culpa ni hoja de cálculo. Si lo importante ya está cubierto, no necesitas vigilar cada café."
+    },
+    {
+      "id": "apr-7",
+      "topic": "aprendizaje",
+      "title": "Toma notas con tus palabras",
+      "body": "Copiar frases literales es transcribir, no aprender. Cierra la fuente y escribe la idea como se la contarías a un amigo: ese pequeño esfuerzo de traducción es donde tu cerebro procesa de verdad. Una nota reformulada vale por diez subrayados."
+    }
+  ]
+}

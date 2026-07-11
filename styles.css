@@ -320,6 +320,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .row-save.saved { color: var(--success); }
 
 /* ---------- perfil ---------- */
+.catalog-info { margin-top: 16px; margin-bottom: 0; font-size: 0.85rem; }
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
