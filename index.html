@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f1a">
+  <title>Hyperfocus — Ideas que te hacen crecer</title>
+  <meta name="description" content="Microlearning gratuito: ideas breves para crecer cada día. Sustituye el scroll infinito por conocimiento.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============ ONBOARDING ============ -->
+  <section id="onboarding" class="screen onboarding hidden">
+    <div class="onboarding-step" data-step="1">
+      <div class="onboarding-hero">
+        <div class="logo-big">⚡</div>
+        <h1>Hyperfocus</h1>
+        <p class="tagline">Sustituye el scroll infinito por ideas que te hacen crecer. 3 minutos al día bastan.</p>
+      </div>
+      <button class="btn btn-primary" id="btn-start">Empezar</button>
+    </div>
+
+    <div class="onboarding-step hidden" data-step="2">
+      <h2>¿Qué te interesa?</h2>
+      <p class="subtitle">Elige al menos 3 temas para personalizar tu feed.</p>
+      <div id="interest-grid" class="interest-grid"></div>
+      <button class="btn btn-primary" id="btn-interests" disabled>Continuar</button>
+    </div>
+
+    <div class="onboarding-step hidden" data-step="3">
+      <h2>Tu meta diaria</h2>
+      <p class="subtitle">¿Cuántas ideas quieres leer al día?</p>
+      <div class="goal-options" id="goal-options">
+        <button class="goal-option" data-goal="3"><span class="goal-num">3</span><span class="goal-label">Casual</span></button>
+        <button class="goal-option selected" data-goal="5"><span class="goal-num">5</span><span class="goal-label">Constante</span></button>
+        <button class="goal-option" data-goal="10"><span class="goal-num">10</span><span class="goal-label">Intenso</span></button>
+      </div>
+      <button class="btn btn-primary" id="btn-goal">Crear mi plan</button>
+    </div>
+  </section>
+
+  <!-- ============ APP ============ -->
+  <main id="app" class="hidden">
+
+    <!-- HOY (feed) -->
+    <section id="view-today" class="screen view">
+      <header class="app-header">
+        <div class="header-left">
+          <span class="logo-small">⚡</span>
+          <span class="brand">Hyperfocus</span>
+        </div>
+        <div class="header-right">
+          <div class="streak-chip" id="streak-chip" title="Racha de días">🔥 <span id="streak-count">0</span></div>
+        </div>
+      </header>
+
+      <div class="daily-progress">
+        <div class="progress-text">
+          <strong id="progress-label">Meta de hoy</strong>
+          <span id="progress-detail">0 / 5 ideas</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+
+      <div class="card-stage" id="card-stage">
+        <!-- tarjeta actual inyectada por JS -->
+      </div>
+
+      <div class="card-actions">
+        <button class="action-btn" id="btn-skip" title="Siguiente idea">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          <span>Siguiente</span>
+        </button>
+        <button class="action-btn action-save" id="btn-save" title="Guardar idea">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          <span>Guardar</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- EXPLORAR -->
+    <section id="view-explore" class="screen view hidden">
+      <header class="app-header"><h2>Explorar</h2></header>
+      <input type="search" id="search-input" class="search-input" placeholder="Buscar ideas…">
+      <div id="topic-list" class="topic-list"></div>
+      <div id="explore-results" class="idea-list"></div>
+    </section>
+
+    <!-- GUARDADAS -->
+    <section id="view-saved" class="screen view hidden">
+      <header class="app-header"><h2>Guardadas</h2></header>
+      <p class="subtitle" id="saved-count-label"></p>
+      <div id="saved-list" class="idea-list"></div>
+    </section>
+
+    <!-- PERFIL -->
+    <section id="view-profile" class="screen view hidden">
+      <header class="app-header"><h2>Tu progreso</h2></header>
+      <div class="stats-grid">
+        <div class="stat-card"><span class="stat-num" id="stat-streak">0</span><span class="stat-label">🔥 Racha</span></div>
+        <div class="stat-card"><span class="stat-num" id="stat-read">0</span><span class="stat-label">💡 Ideas leídas</span></div>
+        <div class="stat-card"><span class="stat-num" id="stat-saved">0</span><span class="stat-label">🔖 Guardadas</span></div>
+        <div class="stat-card"><span class="stat-num" id="stat-best">0</span><span class="stat-label">🏆 Mejor racha</span></div>
+      </div>
+
+      <h3 class="section-title">Meta diaria</h3>
+      <div class="goal-options" id="profile-goal-options">
+        <button class="goal-option" data-goal="3"><span class="goal-num">3</span><span class="goal-label">Casual</span></button>
+        <button class="goal-option" data-goal="5"><span class="goal-num">5</span><span class="goal-label">Constante</span></button>
+        <button class="goal-option" data-goal="10"><span class="goal-num">10</span><span class="goal-label">Intenso</span></button>
+      </div>
+
+      <h3 class="section-title">Tus intereses</h3>
+      <div id="profile-interests" class="interest-grid compact"></div>
+
+      <button class="btn btn-ghost" id="btn-reset">Reiniciar la app</button>
+    </section>
+
+    <!-- NAV -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-view="today">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span>Hoy</span>
+      </button>
+      <button class="nav-btn" data-view="explore">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span>Explorar</span>
+      </button>
+      <button class="nav-btn" data-view="saved">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        <span>Guardadas</span>
+      </button>
+      <button class="nav-btn" data-view="profile">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Perfil</span>
+      </button>
+    </nav>
+  </main>
+
+  <!-- Celebración de meta cumplida -->
+  <div id="goal-toast" class="goal-toast hidden">
+    <span>🎉 ¡Meta diaria cumplida!</span>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
