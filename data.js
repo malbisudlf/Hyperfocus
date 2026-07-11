@@ -19,6 +19,8 @@ const TOPICS = [
   { id: "creatividad",   name: "Creatividad",   emoji: "🎨", color: "#feca57" },
   { id: "dinero",        name: "Dinero",        emoji: "💰", color: "#1dd1a1" },
   { id: "aprendizaje",   name: "Aprendizaje",   emoji: "📚", color: "#e056fd" },
+  // Tema dinámico: se alimenta en vivo desde la API de Wikipedia (ver app.js)
+  { id: "descubre",      name: "Descubre",      emoji: "🌍", color: "#48dbfb" },
 ];
 
 const IDEAS = [

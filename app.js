@@ -11,6 +11,8 @@ const defaultState = {
   dailyGoal: 5,           // ideas por día
   readIds: [],            // ideas leídas (histórico)
   savedIds: [],           // ideas guardadas
+  savedDynamic: [],       // tarjetas dinámicas guardadas (objeto completo)
+  dynamicMigrated: false, // migración: activar «Descubre» a usuarios previos
   todayCount: 0,          // ideas leídas hoy
   lastActiveDay: null,    // "YYYY-MM-DD" del último día con lectura
   streak: 0,
@@ -83,6 +85,77 @@ function onCatalogUpdated() {
     renderProfile();
   }
   renderCatalogInfo();
+}
+
+// ---------- fuente dinámica: Wikipedia en español ----------
+// El tema «Descubre» se alimenta en vivo de la API pública de Wikimedia
+// (gratuita, sin claves, con CORS abierto): resúmenes de artículos al
+// azar y efemérides del día. Contenido infinito sin mantener nada.
+const WIKI_RANDOM_URL = "https://es.wikipedia.org/api/rest_v1/page/random/summary";
+const WIKI_ONTHISDAY_URL = () => {
+  const d = new Date();
+  return `https://es.wikipedia.org/api/rest_v1/feed/onthisday/events/${d.getMonth() + 1}/${d.getDate()}`;
+};
+
+let wikiBuffer = [];        // tarjetas dinámicas listas para el feed
+let wikiFetching = false;
+let onThisDayPool = null;   // efemérides de hoy (se piden una vez por sesión)
+let readsSinceDynamic = 0;  // para intercalar 1 dinámica cada 3 tarjetas
+
+function dynamicActive() {
+  return state.interests.includes("descubre");
+}
+
+async function fetchRandomWikiCard() {
+  const res = await fetch(WIKI_RANDOM_URL);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const p = await res.json();
+  // Solo artículos normales con un resumen con sustancia
+  if (p.type !== "standard" || !p.extract || p.extract.length < 120) return null;
+  return {
+    id: "wiki-" + p.pageid,
+    topic: "descubre",
+    title: p.title,
+    body: p.extract.length > 420 ? p.extract.slice(0, 400).trimEnd() + "…" : p.extract,
+    url: p.content_urls && p.content_urls.desktop ? p.content_urls.desktop.page : null,
+    source: "Wikipedia · CC BY-SA",
+  };
+}
+
+async function fetchOnThisDayCard() {
+  if (onThisDayPool === null) {
+    const res = await fetch(WIKI_ONTHISDAY_URL());
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    onThisDayPool = shuffle((data.events || []).filter((e) => e.text && e.year));
+  }
+  const e = onThisDayPool.pop();
+  if (!e) return null;
+  const page = (e.pages && e.pages[0]) || null;
+  return {
+    id: "wiki-otd-" + e.year + "-" + Math.random().toString(36).slice(2, 7),
+    topic: "descubre",
+    title: `Tal día como hoy, en ${e.year}`,
+    body: e.text,
+    url: page && page.content_urls && page.content_urls.desktop ? page.content_urls.desktop.page : null,
+    source: "Wikipedia · CC BY-SA",
+  };
+}
+
+async function refillWikiBuffer() {
+  if (wikiFetching || !dynamicActive() || wikiBuffer.length >= 4) return;
+  wikiFetching = true;
+  try {
+    // Mezcla: 3 artículos al azar + 1 efeméride por tanda
+    const fetchers = [fetchRandomWikiCard(), fetchRandomWikiCard(), fetchRandomWikiCard(), fetchOnThisDayCard()];
+    const results = await Promise.allSettled(fetchers);
+    results.forEach((r) => {
+      if (r.status === "fulfilled" && r.value && !wikiBuffer.some((c) => c.id === r.value.id)) {
+        wikiBuffer.push(r.value);
+      }
+    });
+  } catch { /* sin red: el feed sigue con el catálogo local */ }
+  wikiFetching = false;
 }
 
 function renderCatalogInfo() {
@@ -236,7 +309,15 @@ function buildQueue() {
 
 function nextCard() {
   if (queue.length === 0) buildQueue();
-  currentIdea = queue.shift();
+  // Intercala una tarjeta dinámica de Wikipedia cada 3 lecturas
+  if (dynamicActive() && wikiBuffer.length > 0 && readsSinceDynamic >= 2) {
+    currentIdea = wikiBuffer.shift();
+    readsSinceDynamic = 0;
+  } else {
+    currentIdea = queue.shift() || wikiBuffer.shift() || null;
+    readsSinceDynamic++;
+  }
+  refillWikiBuffer();
   renderCard(currentIdea);
 }
 
@@ -248,11 +329,15 @@ function renderCard(idea) {
   }
   const topic = topicById(idea.topic);
   const isSaved = state.savedIds.includes(idea.id);
+  const sourceLink = idea.url
+    ? `<a class="idea-source" href="${escapeHtml(idea.url)}" target="_blank" rel="noopener">${escapeHtml(idea.source || "Fuente")} ↗</a>`
+    : "";
   stage.innerHTML = `
     <article class="idea-card" data-id="${idea.id}">
       <span class="idea-topic" style="color:${topic.color}">${topic.emoji} ${topic.name}</span>
       <h3 class="idea-title">${escapeHtml(idea.title)}</h3>
       <p class="idea-body">${escapeHtml(idea.body)}</p>
+      ${sourceLink}
       ${isSaved ? '<span class="idea-saved-badge">✓ Guardada</span>' : ""}
     </article>`;
   const saveBtn = $("#btn-save");
@@ -271,10 +356,28 @@ function skipCard() {
   }
 }
 
+function findIdeaById(id) {
+  return (
+    IDEAS.find((i) => i.id === id) ||
+    state.savedDynamic.find((i) => i.id === id) ||
+    (currentIdea && currentIdea.id === id ? currentIdea : null)
+  );
+}
+
 function toggleSave(id) {
   const idx = state.savedIds.indexOf(id);
-  if (idx >= 0) state.savedIds.splice(idx, 1);
-  else state.savedIds.push(id);
+  if (idx >= 0) {
+    state.savedIds.splice(idx, 1);
+    state.savedDynamic = state.savedDynamic.filter((i) => i.id !== id);
+  } else {
+    state.savedIds.push(id);
+    // Las tarjetas dinámicas no existen en el catálogo local:
+    // se guarda el objeto completo para que persista entre sesiones.
+    if (!IDEAS.some((i) => i.id === id)) {
+      const card = findIdeaById(id);
+      if (card) state.savedDynamic.push(card);
+    }
+  }
   saveState();
 }
 
@@ -299,9 +402,12 @@ function showGoalToast() {
 let exploreTopic = null;
 
 function renderTopicPills() {
+  // Solo temas con ideas en el catálogo; los dinámicos («Descubre»)
+  // viven en el feed, no en el buscador.
+  const withIdeas = TOPICS.filter((t) => IDEAS.some((i) => i.topic === t.id));
   $("#topic-list").innerHTML =
     `<button class="topic-pill ${!exploreTopic ? "selected" : ""}" data-topic="">✨ Todos</button>` +
-    TOPICS.map(
+    withIdeas.map(
       (t) => `<button class="topic-pill ${exploreTopic === t.id ? "selected" : ""}" data-topic="${t.id}">${t.emoji} ${t.name}</button>`
     ).join("");
 }
@@ -333,7 +439,7 @@ function renderExplore() {
 
 // ---------- guardadas ----------
 function renderSaved() {
-  const saved = IDEAS.filter((i) => state.savedIds.includes(i.id));
+  const saved = state.savedIds.map(findIdeaById).filter(Boolean);
   $("#saved-count-label").textContent = saved.length
     ? `${saved.length} idea${saved.length !== 1 ? "s" : ""} en tu biblioteca`
     : "";
@@ -355,6 +461,7 @@ function ideaRowHtml(idea) {
       </div>
       <h4>${escapeHtml(idea.title)}</h4>
       <p>${escapeHtml(idea.body)}</p>
+      ${idea.url ? `<a class="idea-source" href="${escapeHtml(idea.url)}" target="_blank" rel="noopener">${escapeHtml(idea.source || "Fuente")} ↗</a>` : ""}
     </div>`;
 }
 
@@ -455,11 +562,21 @@ function startApp() {
 
 function init() {
   loadCachedCatalog(); // aplica la última copia descargada antes de pintar nada
+
+  // Migración: activar «Descubre» una vez a quien ya usaba la app
+  if (state.onboarded && !state.dynamicMigrated) {
+    if (!state.interests.includes("descubre")) state.interests.push("descubre");
+    state.dynamicMigrated = true;
+    saveState();
+  }
+  if (!state.onboarded) { state.dynamicMigrated = true; saveState(); }
+
   initOnboarding();
   initExplore();
   initProfile();
   initNav();
   fetchCatalog();      // sincroniza en segundo plano con la fuente externa
+  refillWikiBuffer();  // precarga tarjetas dinámicas de Wikipedia
 
   $("#btn-skip").addEventListener("click", skipCard);
   $("#btn-save").addEventListener("click", () => {

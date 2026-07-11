@@ -11,7 +11,8 @@ Una app de **microlearning gratuita y de código abierto**: sustituye el scroll 
 - **Explorar** — busca ideas por texto o navega por tema.
 - **Perfil** — estadísticas de progreso, edición de intereses y meta diaria.
 - **Sin backend** — todo tu progreso se guarda en `localStorage` de tu navegador. Privacidad total.
-- **Fuente externa de ideas** — al arrancar, la app sincroniza con `ideas.json`: puedes ampliar el catálogo editando ese archivo, sin tocar código. Funciona offline gracias a una caché local.
+- **Tema «Descubre» 🌍 con contenido infinito** — se alimenta en vivo de la API pública de Wikipedia en español (gratuita, sin claves): resúmenes de artículos y efemérides del día, intercalados en tu feed. Cada tarjeta enlaza a su fuente.
+- **Fuente externa de ideas** — al arrancar, la app también sincroniza con `ideas.json`: puedes ampliar el catálogo editando ese archivo, sin tocar código. Funciona offline gracias a una caché local.
 
 ## 🚀 Cómo usarla
 
@@ -73,6 +74,15 @@ Al guardar el archivo, la app publicada en GitHub Pages mostrará las ideas nuev
 2. En segundo plano descarga `ideas.json` y fusiona su contenido.
 3. La descarga se guarda en caché (`localStorage`), así el catálogo completo sigue disponible sin conexión.
 4. En **Perfil** puedes ver el tamaño del catálogo y el estado de la sincronización.
+
+### El tema «Descubre» (contenido en vivo)
+
+Si activas el interés **Descubre 🌍**, el feed intercala una tarjeta dinámica cada 3 lecturas, obtenida en el momento desde la API REST de Wikimedia:
+
+- **Artículos al azar** — `es.wikipedia.org/api/rest_v1/page/random/summary`
+- **Efemérides de hoy** — `es.wikipedia.org/api/rest_v1/feed/onthisday/events/{mes}/{día}`
+
+No requiere clave ni registro, y el contenido es infinito: nunca se acaba el feed. Las tarjetas dinámicas que guardes se almacenan completas en tu biblioteca (con su enlace a la fuente), así siguen ahí aunque no vuelvan a aparecer en la API. Si no hay conexión, el feed continúa con el catálogo local sin errores. El texto de Wikipedia es CC BY-SA y cada tarjeta enlaza a su artículo original.
 
 ### Usar otra fuente
 

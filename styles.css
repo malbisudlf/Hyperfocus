@@ -205,6 +205,15 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .idea-title { font-size: 1.45rem; line-height: 1.25; letter-spacing: -0.3px; }
 .idea-body { color: var(--text-dim); font-size: 1.02rem; flex: 1; }
+.idea-source {
+  align-self: flex-start;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--text-dim);
+  padding-bottom: 1px;
+}
+.idea-source:hover { color: var(--text); }
 .idea-saved-badge {
   align-self: flex-end;
   font-size: 0.85rem;
