@@ -4,7 +4,7 @@
 // ============================================================
 
 const STORAGE_KEY = "hyperfocus-state-v1";
-const APP_VERSION = 6; // súbelo junto con los ?v= de index.html
+const APP_VERSION = 7; // súbelo junto con los ?v= de index.html
 
 const defaultState = {
   onboarded: false,
@@ -26,11 +26,10 @@ let queue = [];           // cola de ideas del feed
 let currentIdea = null;
 
 // ---------- fuente dinámica: Wikipedia en español ----------
-// TODOS los temas se alimentan en vivo de la API pública de Wikimedia
-// (gratuita, sin claves, con CORS abierto). Cada tema busca artículos
-// relacionados con sus términos semilla, con desplazamiento aleatorio
-// para variar los resultados: contenido casi ilimitado sin mantener nada.
-// «Descubre» usa además artículos al azar y efemérides del día.
+// El contenido principal es la biblioteca curada de data.js. Solo el
+// tema «Descubre» se alimenta en vivo de la API pública de Wikimedia
+// (gratuita, sin claves, con CORS abierto): artículos al azar y
+// efemérides del día, con filtros de calidad.
 const WIKI_RANDOM_URL = "https://es.wikipedia.org/api/rest_v1/page/random/summary";
 const WIKI_ONTHISDAY_URL = () => {
   const d = new Date();
@@ -40,35 +39,6 @@ const WIKI_SEARCH_URL = (query, offset) =>
   "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
   `&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=10&gsroffset=${offset}` +
   "&prop=extracts%7Cinfo%7Cdescription&exintro=1&explaintext=1&exlimit=max&inprop=url";
-
-// Categorías de Wikipedia por tema: agrupan artículos de CONCEPTOS
-// (técnicas, efectos, fenómenos), que es lo que queremos en el feed.
-// Si una categoría no existe o viene vacía, se usa la búsqueda de
-// respaldo (TOPIC_QUERIES) con los mismos filtros de calidad.
-const TOPIC_CATEGORIES = {
-  enfoque:       ["Atención", "Atención plena", "Meditación"],
-  productividad: ["Gestión del tiempo", "Productividad", "Toma de decisiones"],
-  habitos:       ["Hábitos", "Motivación", "Comportamiento humano"],
-  mentalidad:    ["Sesgos cognitivos", "Psicología positiva", "Estoicismo", "Emociones"],
-  salud:         ["Sueño", "Ejercicio físico", "Nutrición aplicada", "Salud mental"],
-  creatividad:   ["Creatividad", "Innovación", "Resolución de problemas"],
-  dinero:        ["Finanzas personales", "Economía conductual", "Ahorro"],
-  aprendizaje:   ["Aprendizaje", "Memoria", "Mnemotecnia"],
-  relaciones:    ["Psicología social", "Comunicación no verbal", "Amistad"],
-};
-
-// Búsqueda de respaldo por tema (cuando la categoría no da resultados).
-const TOPIC_QUERIES = {
-  enfoque:       ["atención psicología", "concentración mental", "atención plena meditación"],
-  productividad: ["productividad método", "gestión del tiempo", "procrastinación"],
-  habitos:       ["hábito psicología", "motivación conducta", "autocontrol psicología"],
-  mentalidad:    ["sesgo cognitivo", "resiliencia psicología", "inteligencia emocional"],
-  salud:         ["higiene del sueño", "efecto ejercicio físico", "bienestar psicológico"],
-  creatividad:   ["pensamiento creativo", "pensamiento lateral", "proceso creativo"],
-  dinero:        ["finanzas personales concepto", "interés compuesto", "economía conductual"],
-  aprendizaje:   ["técnica de estudio", "efecto memoria psicología", "curva del olvido"],
-  relaciones:    ["comunicación interpersonal", "empatía psicología", "asertividad"],
-};
 
 // ---------- filtros de calidad ----------
 // Wikipedia mezcla conceptos con organismos, biografías, lugares, obras…
@@ -128,84 +98,13 @@ function takeDynamicCard() {
 }
 
 function dynamicActive() {
-  return state.interests.length > 0;
+  return state.interests.includes("descubre");
 }
 
 function trimBody(text) {
   return text.length > 420 ? text.slice(0, 400).trimEnd() + "…" : text;
 }
 
-const WIKI_CATEGORY_URL = (cat) =>
-  "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
-  `&list=categorymembers&cmtitle=${encodeURIComponent("Categoría:" + cat)}&cmlimit=100&cmtype=page`;
-
-const WIKI_EXTRACTS_URL = (titles) =>
-  "https://es.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
-  `&titles=${encodeURIComponent(titles.join("|"))}` +
-  "&prop=extracts%7Cinfo%7Cdescription&exintro=1&explaintext=1&exlimit=max&inprop=url";
-
-const categoryCache = {}; // categoría -> títulos de artículos (por sesión)
-
-async function getCategoryMembers(cat) {
-  if (categoryCache[cat]) return categoryCache[cat];
-  const res = await fetch(WIKI_CATEGORY_URL(cat));
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const data = await res.json();
-  const titles = ((data.query && data.query.categorymembers) || [])
-    .map((m) => m.title)
-    .filter((t) => !JUNK_TITLE.test(t));
-  categoryCache[cat] = titles;
-  return titles;
-}
-
-function pagesToCards(pages, topicId) {
-  return pages
-    .filter((p) => isQualityCard(p.title, p.extract, p.description))
-    .map((p) => ({
-      id: "wiki-" + p.pageid,
-      topic: topicId,
-      title: p.title,
-      body: trimBody(p.extract),
-      url: p.fullurl || null,
-      source: "Wikipedia · CC BY-SA",
-    }));
-}
-
-async function fetchExtractsFor(titles, topicId) {
-  const res = await fetch(WIKI_EXTRACTS_URL(titles));
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const data = await res.json();
-  return pagesToCards((data.query && data.query.pages) || [], topicId);
-}
-
-// Respaldo: búsqueda libre (con los mismos filtros de calidad)
-async function fetchSearchBatch(topicId) {
-  const queries = TOPIC_QUERIES[topicId];
-  if (!queries) return [];
-  const query = queries[Math.floor(Math.random() * queries.length)];
-  const offset = Math.floor(Math.random() * 20);
-  const res = await fetch(WIKI_SEARCH_URL(query, offset));
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const data = await res.json();
-  return pagesToCards((data.query && data.query.pages) || [], topicId);
-}
-
-// Tanda de tarjetas de un tema: primero su categoría de Wikipedia
-// (artículos de conceptos), y si no da fruto, la búsqueda de respaldo.
-async function fetchTopicBatch(topicId) {
-  // Prueba hasta dos categorías distintas antes de caer al respaldo
-  const cats = shuffle(TOPIC_CATEGORIES[topicId] || []).slice(0, 2);
-  for (const cat of cats) {
-    try {
-      const titles = await getCategoryMembers(cat);
-      if (titles.length >= 4) {
-        const cards = await fetchExtractsFor(shuffle(titles).slice(0, 10), topicId);
-        if (cards.length >= 3) return cards;
-      }
-    } catch { /* categoría inexistente o sin red: prueba la siguiente */ }
-  }
-  return fetchSearchBatch(topicId);
-}
 
 async function fetchRandomWikiCard() {
   const res = await fetch(WIKI_RANDOM_URL);
@@ -243,17 +142,12 @@ async function fetchOnThisDayCard() {
   };
 }
 
-// Rellena el buffer de UN tema concreto
+// Rellena el buffer de «Descubre» (único tema dinámico)
 async function refillTopic(topicId) {
   wikiFetchingTopics.add(topicId);
   try {
-    let cards;
-    if (topicId === "descubre") {
-      const results = await Promise.allSettled([fetchRandomWikiCard(), fetchRandomWikiCard(), fetchOnThisDayCard()]);
-      cards = results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
-    } else {
-      cards = await fetchTopicBatch(topicId);
-    }
+    const results = await Promise.allSettled([fetchRandomWikiCard(), fetchRandomWikiCard(), fetchOnThisDayCard()]);
+    const cards = results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
     // Sin repetidos: ni ya leídas (histórico) ni ya en ningún buffer
     const buf = wikiBuffers[topicId] || (wikiBuffers[topicId] = []);
     const seen = new Set(state.readIds);
@@ -272,11 +166,11 @@ async function refillTopic(topicId) {
   }
 }
 
-// Rellena en paralelo TODOS los intereses que anden bajos de tarjetas
+// Rellena el buffer dinámico si anda bajo de tarjetas
 async function refillWikiBuffer() {
   if (!dynamicActive()) return;
-  const targets = state.interests.filter(
-    (t) => (wikiBuffers[t] || []).length < 3 && !wikiFetchingTopics.has(t)
+  const targets = ["descubre"].filter(
+    (t) => state.interests.includes(t) && (wikiBuffers[t] || []).length < 3 && !wikiFetchingTopics.has(t)
   );
   if (!targets.length) return;
   const results = await Promise.allSettled(targets.map((t) => refillTopic(t)));
@@ -295,7 +189,7 @@ async function refillWikiBuffer() {
 function renderCatalogInfo() {
   const el = $("#catalog-info");
   if (!el) return;
-  el.textContent = `Contenido en vivo desde Wikipedia en español · sin límites · v${APP_VERSION}`;
+  el.textContent = `${IDEAS.length} ideas en la biblioteca · Descubre 🌍 en vivo desde Wikipedia · v${APP_VERSION}`;
 }
 
 // ---------- persistencia ----------
@@ -565,38 +459,30 @@ function initExplore() {
   });
 }
 
-// Trae los resultados de Explorar según búsqueda y tema seleccionados
-async function fetchExploreCards(query, topicId) {
+// Tarjetas en vivo para la pestaña «Descubre» de Explorar:
+// sin búsqueda → artículos al azar; con búsqueda → buscador de Wikipedia
+async function fetchDiscoverCards(query) {
   if (query) {
-    // Búsqueda libre en Wikipedia (acotada al tema si hay uno elegido)
-    const q = topicId && TOPIC_QUERIES[topicId] ? `${query} ${TOPIC_QUERIES[topicId][0]}` : query;
-    const res = await fetch(WIKI_SEARCH_URL(q, 0));
+    const res = await fetch(WIKI_SEARCH_URL(query, 0));
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
-    // En búsqueda libre no se aplica el filtro anti-organismos: si el
-    // usuario busca «INCAP» quiere ese resultado. Solo pide sustancia.
+    // En búsqueda explícita no se filtra por tipo: si el usuario busca
+    // una persona o un lugar, quiere encontrarlos. Solo pide sustancia.
     return ((data.query && data.query.pages) || [])
       .filter((p) => p.extract && p.extract.length >= 120)
       .map((p) => ({
         id: "wiki-" + p.pageid,
-        topic: topicId || "descubre",
+        topic: "descubre",
         title: p.title,
         body: trimBody(p.extract),
         url: p.fullurl || null,
         source: "Wikipedia · CC BY-SA",
       }));
   }
-  if (topicId === "descubre") {
-    const results = await Promise.allSettled(
-      Array.from({ length: 6 }, () => fetchRandomWikiCard())
-    );
-    return results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
-  }
-  if (topicId) return fetchTopicBatch(topicId);
-  // «Todos» sin búsqueda: una tanda de un interés del usuario al azar
-  const pool = state.interests.length ? state.interests : TOPICS.map((t) => t.id);
-  const randomTopic = pool[Math.floor(Math.random() * pool.length)];
-  return fetchExploreCards("", randomTopic);
+  const results = await Promise.allSettled(
+    Array.from({ length: 6 }, () => fetchRandomWikiCard())
+  );
+  return results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
 }
 
 // Repinta los resultados ya cargados (p. ej. tras guardar) sin refetch
@@ -609,17 +495,30 @@ function renderExploreRows() {
 async function renderExplore() {
   const q = $("#search-input").value.trim();
   const seq = ++exploreSeq;
-  const box = $("#explore-results");
-  box.innerHTML = `<div class="empty-state"><span class="big">⏳</span><p>Buscando en Wikipedia…</p></div>`;
-  try {
-    const cards = await fetchExploreCards(q, exploreTopic);
-    if (seq !== exploreSeq) return; // ya hay una búsqueda más reciente
-    exploreResults = cards;
-    renderExploreRows();
-  } catch {
-    if (seq !== exploreSeq) return;
-    box.innerHTML = `<div class="empty-state"><span class="big">📡</span><p>No se pudo buscar.<br>Revisa tu conexión.</p></div>`;
+
+  // «Descubre»: contenido en vivo desde Wikipedia
+  if (exploreTopic === "descubre") {
+    const box = $("#explore-results");
+    box.innerHTML = `<div class="empty-state"><span class="big">⏳</span><p>Buscando en Wikipedia…</p></div>`;
+    try {
+      const cards = await fetchDiscoverCards(q);
+      if (seq !== exploreSeq) return; // ya hay una búsqueda más reciente
+      exploreResults = cards;
+      renderExploreRows();
+    } catch {
+      if (seq !== exploreSeq) return;
+      box.innerHTML = `<div class="empty-state"><span class="big">📡</span><p>No se pudo buscar.<br>Revisa tu conexión.</p></div>`;
+    }
+    return;
   }
+
+  // Resto de temas: búsqueda instantánea en la biblioteca local
+  const ql = q.toLowerCase();
+  let results = IDEAS;
+  if (exploreTopic) results = results.filter((i) => i.topic === exploreTopic);
+  if (ql) results = results.filter((i) => (i.title + " " + i.body).toLowerCase().includes(ql));
+  exploreResults = results;
+  renderExploreRows();
 }
 
 // ---------- guardadas ----------

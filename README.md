@@ -4,12 +4,13 @@ Una app de **microlearning gratuita y de código abierto**: sustituye el scroll 
 
 ## ✨ Funcionalidades
 
-- **Contenido casi ilimitado, sin mantener nada** — todas las tarjetas llegan en vivo desde la API pública de Wikipedia en español (gratuita, sin claves): cada tema busca artículos relacionados y el feed nunca se acaba.
-- **10 temas** — Enfoque, Productividad, Hábitos, Mentalidad, Salud, Creatividad, Dinero, Aprendizaje, Relaciones y Descubre 🌍 (artículos al azar + efemérides del día).
-- **Explorar en vivo** — el buscador consulta Wikipedia directamente: escribe cualquier cosa o filtra por tema.
-- **Guardadas** — las tarjetas que guardes se almacenan completas en tu navegador y no se pierden.
+- **Biblioteca curada de 222 ideas originales** — conceptos de productividad, hábitos, psicología y finanzas destilados en tarjetas breves y accionables (~1 min de lectura), escritas en español.
+- **9 temas** — Enfoque, Productividad, Hábitos, Mentalidad, Salud, Creatividad, Dinero, Aprendizaje y Relaciones.
+- **Descubre 🌍** — tema opcional con contenido en vivo desde la API pública de Wikipedia: artículos al azar y efemérides del día, con filtros de calidad y enlace a la fuente.
+- **Explorar** — búsqueda instantánea en la biblioteca; la pestaña Descubre busca en vivo en Wikipedia.
+- **Guardadas** — tu biblioteca personal; las tarjetas dinámicas guardadas se conservan completas.
 - **Meta diaria y racha 🔥** — elige cuántas ideas leer al día (3 / 5 / 10) y mantén tu racha.
-- **Sin repetidos** — las tarjetas ya leídas no vuelven a aparecer.
+- **Sin repetidos** — las ideas leídas no vuelven a aparecer hasta agotar la biblioteca.
 - **Sin backend propio** — tu progreso vive en `localStorage`. Privacidad total.
 
 ## 🚀 Cómo usarla
@@ -27,7 +28,7 @@ npx serve .
 ```
 Y visita `http://localhost:8080`.
 
-> El contenido llega de la API de Wikipedia, así que la app necesita conexión. Sin red, muestra un estado de reintento y tus guardadas siguen disponibles.
+La biblioteca funciona sin conexión una vez cargada la app; solo el tema «Descubre» necesita red.
 
 ## 🧱 Tecnología
 
@@ -37,25 +38,27 @@ HTML + CSS + JavaScript puro. Cero dependencias, cero build, cero coste.
 |---|---|
 | `index.html` | Estructura de las pantallas (onboarding, feed, explorar, guardadas, perfil) |
 | `styles.css` | Estilos (tema oscuro, mobile-first) |
-| `data.js` | La lista de temas (colores, emojis) |
-| `app.js` | Lógica: fuente dinámica de Wikipedia, feed, rachas, metas, guardado, navegación |
+| `data.js` | Los temas y la biblioteca de 222 ideas |
+| `app.js` | Lógica: feed, rachas, metas, guardado, navegación y el tema Descubre |
 
-## 🌐 Cómo funciona la fuente externa
+## ➕ Ampliar la biblioteca
 
-Todo el contenido se obtiene en el momento desde la API REST y la API de acción de Wikimedia:
+Añade objetos al array `IDEAS` de `data.js`:
 
-- **Artículos por tema** — cada sección busca artículos con sus términos semilla (`TOPIC_QUERIES` en `app.js`), eligiendo término y desplazamiento al azar en cada tanda para que apenas se repita nada.
-- **Artículos al azar** — `es.wikipedia.org/api/rest_v1/page/random/summary` (tema Descubre).
-- **Efemérides de hoy** — `es.wikipedia.org/api/rest_v1/feed/onthisday/events/{mes}/{día}` (tema Descubre).
-- **Buscador de Explorar** — búsqueda libre con `generator=search`, acotada al tema seleccionado si hay uno.
+```js
+{
+  id: "mi-idea-1",
+  topic: "enfoque", // id de un tema existente
+  title: "Título corto y potente",
+  body: "El cuerpo de la idea, en unas 3-4 frases accionables."
+}
+```
 
-No requiere clave ni registro. El texto de Wikipedia es CC BY-SA y cada tarjeta enlaza a su artículo original.
+También puedes crear temas nuevos añadiéndolos al array `TOPICS`.
 
-### Personalizar
+## 🌍 El tema «Descubre»
 
-- **Afinar qué artículos salen por tema**: edita los términos de búsqueda en `TOPIC_QUERIES` (en `app.js`).
-- **Añadir temas nuevos**: añade el tema en `TOPICS` (`data.js`) y sus términos en `TOPIC_QUERIES`.
-- **Tarjetas fijas propias** (opcional): el array `IDEAS` de `data.js` acepta tarjetas `{ id, topic, title, body }` que se mezclan con el contenido dinámico.
+Si lo activas en tus intereses, el feed intercala tarjetas en vivo desde la API REST de Wikimedia (gratuita, sin claves): artículos al azar y efemérides del día. Un filtro de calidad descarta biografías, organismos, lugares y obras para quedarse con conceptos. El texto de Wikipedia es CC BY-SA y cada tarjeta enlaza a su artículo original.
 
 ## ⌨️ Atajos de teclado
 
